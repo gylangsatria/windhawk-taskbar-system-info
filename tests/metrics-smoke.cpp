@@ -351,10 +351,12 @@ int wmain() {
                                  kSyntheticSharedMemory, false}) ||
         !LooksLikeIntegratedGpu({L"AMD Radeon(TM) 8060S Graphics", {},
                                  512 * kMiB, kSyntheticSharedMemory, false}) ||
-        LooksLikeIntegratedGpu({L"AMD Radeon HD 6450", {}, 512 * kMiB,
-                                256 * kMiB, false}) ||
-        LooksLikeIntegratedGpu({L"AMD Radeon HD 6470M", {}, 512 * kMiB,
-                                256 * kMiB, false}) ||
+        // The difficult legacy case stays visible: auto mode is ambiguous;
+        // regression.cpp separately verifies the dedicated-memory override.
+        !LooksLikeIntegratedGpu({L"AMD Radeon HD 6450", {}, 512 * kMiB,
+                                  kSyntheticSharedMemory, false}) ||
+        !LooksLikeIntegratedGpu({L"AMD Radeon HD 6470M", {}, 512 * kMiB,
+                                  kSyntheticSharedMemory, false}) ||
         LooksLikeIntegratedGpu({L"Intel Arc A380", {}, 6ull * 1024 * 1024 *
                                                           1024,
                                 kSyntheticSharedMemory, false})) {
@@ -458,6 +460,29 @@ int wmain() {
     }
 
     PdhCollectQueryData(query);
+    // Raw memory gauges need one collect, unlike utilization rate counters.
+    // Exercise the premise used by the production fresh-query recovery probe.
+    {
+        std::vector<unsigned char> firstBuffer;
+        DWORD firstCount = 0;
+        bool firstMemoryFound = false;
+        bool shared = LooksLikeIntegratedGpu(*liveAdapter);
+        if (ReadArray(shared ? sharedVramCounter : vramCounter, firstBuffer, firstCount)) {
+            auto* firstItems = reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(firstBuffer.data());
+            for (DWORD i = 0; i < firstCount; ++i) {
+                const auto& item = firstItems[i];
+                std::wstring name = item.szName ? ToLower(item.szName) : L"";
+                if (name.find(luid) != std::wstring::npos &&
+                    (item.FmtValue.CStatus == PDH_CSTATUS_VALID_DATA ||
+                     item.FmtValue.CStatus == PDH_CSTATUS_NEW_DATA) &&
+                    std::isfinite(item.FmtValue.doubleValue) && item.FmtValue.doubleValue >= 0) {
+                    firstMemoryFound = true;
+                }
+            }
+        }
+        std::wcout << L"FRESH_MEMORY_ONE_COLLECT="
+                   << (firstMemoryFound ? L"available" : L"unavailable") << L"\n";
+    }
     Sleep(1100);
     if (PdhCollectQueryData(query) != ERROR_SUCCESS) {
         PdhCloseQuery(query);

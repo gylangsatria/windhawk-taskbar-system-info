@@ -67,12 +67,29 @@ or make internet requests.
 - GPU fallback from the Windows display-driver interface (D3DKMT).
 - CPU fallback from Windows ACPI thermal zones exposed through PDH.
 
-Metric collection runs on a worker thread. The taskbar UI thread only renders
-completed snapshots and catches up with every sample that arrived while the UI
-was busy, so the history traces keep their sampling interval. If a display
-driver restart assigns the adapter a new LUID, the mod detects it during the
-normal adapter refresh and rebuilds the GPU performance counters once. Hard
-counter failures use the same bounded recovery path and fixed cooldown.
+Metric collection runs on a worker thread. CPU and GPU performance counters
+use separate queries, so GPU recovery does not reset the CPU thermal-zone
+counter. The UI consumes completed snapshots; new samples and Windows
+theme/display-change notifications trigger updates. A fallback UI timer follows
+the configured update interval.
+
+Graphs use measurement timestamps and a fixed 0-100% scale. A missing sample
+or collection stall leaves a gap instead of erasing earlier history or drawing
+a line through unknown data. The collector uses deadlines rather than adding
+its own collection time to every interval. Its bounded queue retains the latest
+256 samples if the UI is temporarily busy.
+
+A changed adapter LUID rebuilds the GPU query during the normal adapter
+refresh (up to 60 seconds). Three consecutive hard PDH errors can also trigger
+recovery, with a 60-second cooldown. If GPU-memory readings disappear while the
+LUID stays unchanged, an independent memory query checks whether the old query
+is stale. Only a working fresh reading triggers a rebuild; an unavailable or
+parked GPU is not repeatedly reset. Fresh probes run at most once per minute.
+CPU and RAM remain visible while a new GPU query establishes its rate baseline.
+When both engine and memory readings are missing, GPU shows `--%`, not a
+made-up zero. A working memory reading with no engine instances can show idle
+0%. This is recovery from recognized counter failures, not a guarantee that
+every driver fault can be repaired without reloading the mod.
 
 The adapter with the most dedicated VRAM is selected automatically. A partial
 adapter-name filter is available for multi-GPU systems. GPU usage and VRAM are
@@ -135,6 +152,19 @@ GPU, RAM, and VRAM monitoring continues to work. The active CPU and GPU
 providers are logged only when they change. If automatic GPU matching finds
 temperature readings but none match the selected Windows adapter, the log
 explains that the sensor-name filter is the escape hatch.
+
+Cached HWiNFO readings are checked against sensor/instance/reading IDs in
+Shared Memory, or exact Sensor/Label pairs in Gadget Registry. Reordered
+records trigger reselection in the same sample. Partial discovery retries
+quickly for a short window, then returns to the normal scan interval (60 seconds
+for Shared Memory, 30 seconds for Registry). Registry discovery enumerates
+actual SensorN entries, including sparse numbering. Invalid shared-memory layouts
+are rejected and logged once until a valid layout returns.
+
+Short provider timeouts are shown as unavailable unless another configured
+provider can supply the reading. Old temperatures are not silently held over
+as if they were current. Registry decimals and displayed numbers are independent
+of Explorer's numeric locale.
 
 ## Setting up HWiNFO temperatures
 
@@ -250,7 +280,7 @@ to dedicated VRAM usage on a discrete card.
 | CPU or GPU temperature is `--°C` | Windows may not expose that sensor. Use Automatic mode, then configure HWiNFO Shared Memory or Gadget Registry. Confirm HWiNFO is running. |
 | HWiNFO worked and stopped after about 12 hours | The free HWiNFO64 Shared Memory period expired. Re-enable/restart it, configure Gadget Registry, use Windows-native fallback, or use HWiNFO64 Pro. |
 | GPU temperature belongs to another card | Set **GPU adapter filter** first. If needed, also set **GPU temperature sensor filter** to the matching HWiNFO sensor. |
-| VRAM is `--` after a driver update | A changed adapter LUID triggers an automatic counter rebuild. Give it several update intervals. If it remains unavailable, reload the mod or restart Explorer and inspect the Windhawk log. |
+| VRAM is `--` after a driver update | Allow up to one minute for adapter refresh or a fresh-query probe, plus a few priming samples. Check the Windhawk log. Reload the mod if Windows still cannot supply valid readings. |
 | Integrated-GPU memory looks unexpectedly large | Automatic mode shows the Windows shared-memory limit. Select **Dedicated VRAM** only if you intentionally want the small reserved carve-out. |
 | Discrete 512 MB GPU is shown as shared memory | Force **Dedicated VRAM**. The automatic memory-shape signal cannot always distinguish a legacy low-memory discrete card from an integrated carve-out. |
 | Widget is missing or on the wrong taskbar | Verify **Taskbar monitor**, width and offset. Disconnecting a selected display temporarily moves the widget to the primary taskbar. Reload the mod after a major Explorer/taskbar update. |
@@ -268,6 +298,11 @@ sensor-name mismatches are logged without printing every one-second sample.
   position in the virtual desktop and can differ from the numbers in Windows
   Display Settings. An unavailable or disconnected selection falls back to the
   primary taskbar automatically and moves back when the selected display returns.
+- Display-change notifications re-evaluate monitor ordering even when the number
+  of displays and their taskbar windows stay unchanged.
+- On a taskbar shorter than the normal 38-DIP widget, the whole block scales down
+  uniformly to fit. Normal-height taskbars keep the configured size. Very wide
+  fonts can still require a wider widget; text is trimmed instead of overlapping.
 - Centered taskbar icons are recommended.
 - Windows Widgets/weather or another left-side taskbar extension can occupy the
   same far-left area. Adjust the offset or disable the conflicting element if
@@ -303,6 +338,8 @@ python .\tests\validate-source.py
 .\build.ps1
 .\build.ps1 -Architecture aarch64 -OutputDirectory .\build-arm64
 .\tests\run-metrics-smoke.ps1
+.\tests\run-regression.ps1
+.\tests\run-ui-smoke.ps1
 ```
 
 The source validator uses only the Python standard library. The local build uses
@@ -312,6 +349,22 @@ fallback and PDH state, reports integrated-adapter detection, verifies that the
 selected GPU LUID is present in the performance counters, checks GPU, VRAM and
 temperature ranges, and reports whether Windows exposes usable ACPI thermal
 zones.
+
+The regression executable includes the production module directly, using the
+Windhawk editor API stubs and injected Windows provider APIs. It tests cached
+HWiNFO record reordering, sparse registry indices, locale-independent decimals,
+timestamped graph gaps, sampling deadlines, stale versus parked GPU queries,
+LUID changes, hard-error recovery, and CPU/GPU query isolation. It also exercises
+the real notification callback on a private hidden window and verifies that
+queued messages are harmless after the callback is detached.
+
+The UI smoke test hosts the real widget in an isolated XAML Island and writes
+PNG renders to `build-ui-smoke`. It does not inject into Explorer, change the
+desktop theme or restart the display driver. Synthetic tests and a healthy
+live-counter smoke run do not prove physical driver-restart, monitor-unplug,
+mixed-DPI or ARM64-device behavior; those remain separate manual checks.
+See [the verification and review-resolution record](docs/review-resolution-2026-09-17.md)
+for the exact scope of this change and deliberately retained tradeoffs.
 
 ## Credits and license
 

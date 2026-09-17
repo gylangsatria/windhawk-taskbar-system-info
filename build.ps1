@@ -46,7 +46,7 @@ if (-not (Test-Path -LiteralPath $engineLibrary)) {
     throw "Required path not found: $engineLibrary"
 }
 
-$source = Get-Content -LiteralPath $sourcePath -Raw
+$source = Get-Content -LiteralPath $sourcePath -Raw -Encoding utf8
 $idMatch = [regex]::Match($source, '(?m)^// @id\s+(\S+)\s*$')
 $versionMatch = [regex]::Match($source, '(?m)^// @version\s+(\S+)\s*$')
 if (-not $idMatch.Success -or -not $versionMatch.Success) {
@@ -102,6 +102,7 @@ $compilerArguments = @(
     '-lruntimeobject'
     '-lpdh'
     '-ldxgi'
+    '-lcomctl32'
 )
 
 Push-Location $compilerWorkingDirectory

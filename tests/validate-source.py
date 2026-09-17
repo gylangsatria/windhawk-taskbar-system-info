@@ -357,13 +357,14 @@ def main() -> int:
     assert "HwInfoSharedMemoryCache" in source
     assert "g_hwInfoSharedMemoryCache.cpuReadingIndex" in shared_memory_reader
     assert "g_hwInfoSharedMemoryCache.gpuReadingIndex" in shared_memory_reader
-    assert "HwInfoReadingIdentity" not in source
+    assert "HwInfoReadingIdentity" in source
+    assert "ReadingIdentity(raw.sensor, raw.reading) != *identity" in source
     assert "kHwInfoCachedReadingFailureLimit" not in source
     assert "cachedCpuReading" in shared_memory_reader
     assert "cachedGpuReading" in shared_memory_reader
     assert "fullScanCopied" in shared_memory_reader
     assert "kSharedMemoryRescanInterval" in shared_memory_reader
-    assert "kHwInfoUnavailableRetryInterval" in shared_memory_reader
+    assert "HwInfoRescanDelay(" in shared_memory_reader
     assert "kSharedMemoryPartialRescanInterval" not in source
     assert "GetHwInfoRescanInterval(" not in source
     assert "kHwInfoFastPartialRescanLimit" not in source
@@ -372,9 +373,11 @@ def main() -> int:
     assert "HwInfoGadgetRegistryCache" in source
     assert "g_hwInfoGadgetRegistryCache.cpuIndex" in source
     assert "g_hwInfoGadgetRegistryCache.gpuIndex" in source
-    assert "HwInfoGadgetReadingIdentity" not in source
-    assert "readCached(g_hwInfoGadgetRegistryCache.cpuIndex, true, needsCpu)" in source
-    assert "readCached(g_hwInfoGadgetRegistryCache.gpuIndex, false, needsGpu)" in source
+    assert "HwInfoGadgetReadingIdentity" in source
+    assert "readCached(g_hwInfoGadgetRegistryCache.cpuIndex," in source
+    assert "g_hwInfoGadgetRegistryCache.cpuIdentity, true, needsCpu" in source
+    assert "readCached(g_hwInfoGadgetRegistryCache.gpuIndex," in source
+    assert "g_hwInfoGadgetRegistryCache.gpuIdentity, false, needsGpu" in source
     assert "kGadgetRegistryRescanInterval" in source
     assert "kGadgetRegistryPartialRescanInterval" not in source
     assert "[[clang::no_destroy]] HwInfoGadgetRegistryCache" not in source
@@ -418,7 +421,8 @@ def main() -> int:
     assert "NormalizeAdapterIdentity(adapter.description)" not in integrated_gpu_heuristic
     assert "vramTotalBytes" in source
     assert "bool gpuAdapterInstanceFound = false" in source
-    assert "adapter && gpuAdapterInstanceFound" in source
+    assert "fresh query confirmed stale GPU counters" in source
+    assert "vramAvailable && g_gpuCounter" in source
     assert "generic HWiNFO matching can" in source
     assert "!g_hasResolvedGpuAdapterIdentity" in source
     assert "bool gpuAvailable = false;" in source
@@ -441,10 +445,11 @@ def main() -> int:
     assert "PdhRemoveCounter(g_thermalZoneCounter)" in source
     assert 'L"\\\\Processor Information(_Total)\\\\% Processor Utility"' in source
     assert "ReadCpuUtility" in source
-    assert "bool EnsurePdhQuery(const ModSettings& settings)" in source
-    assert "if (EnsurePdhQuery(settings))" in source
-    assert "std::optional<MetricsSnapshot> CollectMetrics" in source
-    assert "if (!snapshot)" in source
+    assert "bool EnsurePdhQuery()" in source
+    assert "bool EnsureCpuPdhQuery(const ModSettings& settings)" in source
+    assert "if (EnsurePdhQuery())" in source
+    assert "MetricsSnapshot CollectMetrics" in source
+    assert "PublishMetrics(std::move(snapshot))" in source
     assert "g_cachedD3dkmtAdapterHandle" in source
     assert "GetD3dkmtAdapterHandle" in source
     assert "constexpr int kMaxArrayReadAttempts = 4" in source
@@ -523,7 +528,7 @@ def main() -> int:
         source.index("ColumnDefinition PixelColumn")
     ]
     assert "g_taskbarThreadId = GetCurrentThreadId();" in timer_management
-    assert "CurrentSettings()->updateInterval" not in timer_management
+    assert "CurrentSettings()->updateInterval" in timer_management
     assert "std::chrono::milliseconds(1000)" in timer_management
     assert "g_lastRenderedMetricsSequence" in timer_management
     assert "std::chrono::milliseconds(250)" in timer_management
@@ -547,10 +552,7 @@ def main() -> int:
         source.index("using RunFromWindowThreadProc")
     ]
     assert "if (!RemoveWidget())" in inject_widget
-    remove_taskbar = source[
-        source.index("void RemoveFromCurrentTaskbar(") :
-        source.index("void ResetPlacementRetryState(")
-    ]
+    remove_taskbar = extract_cpp_function(source, "RemoveFromCurrentTaskbar")
     assert "StopTimer()" in remove_taskbar
     assert "RemoveTaskbarUiContext" in remove_taskbar
     assert "context->succeeded = succeeded" in remove_taskbar
@@ -702,13 +704,23 @@ def main() -> int:
     assert "HWiNFO GPU temperature readings found" in source
 
     reuse_path = inject_widget[
-        inject_widget.index("if (g_widget &&") :
+        inject_widget.index("if (g_widgetHost &&") :
         inject_widget.index('Wh_Log(L"Removing stale Taskbar System Info widget")')
     ]
     assert "StartMetricsWorker()" in reuse_path
     assert "EnsureTimer();" in reuse_path
 
+    # Structural guards complement (not replace) the compiled behavioral suite.
     assert "code[3] == 0x28" not in source
+    assert "SetWindowSubclass(" in source and "RemoveTaskbarNotifications()" in remove_taskbar
+    assert "WM_DISPLAYCHANGE" in source and "WM_SETTINGCHANGE" in source
+    assert "PostTaskbarRefresh();" in extract_cpp_function(source, "PublishMetrics")
+    assert "PathGeometry" in source and "BuildSparklineRuns" in source
+    assert "snapshot.capturedAt" in source and "AdvanceSampleDeadline" in source
+    assert "g_rootGrid.SizeChanged(g_rootSizeChangedToken)" in remove_widget
+    assert "g_widgetHost = nullptr" in remove_widget
+    assert "-lcomctl32" in build_script
+    assert "Get-Content -LiteralPath $sourcePath -Raw -Encoding utf8" in build_script
 
     print(
         "Source validation OK: "
