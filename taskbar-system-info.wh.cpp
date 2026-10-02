@@ -4,7 +4,7 @@
 // @name:uk-UA      Системний монітор панелі завдань
 // @description     A quiet two-column CPU, GPU, RAM and VRAM monitor with 60-second history graphs for the Windows 11 taskbar.
 // @description:uk-UA Компактний монітор CPU, GPU, RAM і VRAM із 60-секундними графіками для панелі завдань Windows 11.
-// @version         1.5.0
+// @version         1.5.1
 // @author          Yevhenii Starychenko
 // @github          https://github.com/starychenko
 // @homepage        https://github.com/starychenko/windhawk-taskbar-system-info
@@ -229,7 +229,14 @@ filters empty unless a mismatch actually occurs.
 ## Settings guide
 
 - **Widget width** and **Left offset** control the block size and its distance
-  from the far-left taskbar edge.
+  from the far-left edge of the selected taskbar, in XAML logical pixels.
+  The requested offset is limited to the available width before the system tray.
+  With Reserve space enabled, current taskbar buttons and their existing margins
+  are also preserved. The offset is reduced first; if necessary the block scales
+  down to fit, or hides when no space remains. Resizing the panel or changing
+  monitors recalculates placement and restores the requested offset when possible.
+  This applies equally to horizontal taskbars at the top and bottom; it does not
+  automatically avoid Widgets/weather or every third-party taskbar element.
 - **Taskbar monitor** selects the display. An unavailable display falls back to
   the primary taskbar and is retried automatically.
 - **Reserve space** prevents left-aligned taskbar buttons from overlapping the
@@ -323,8 +330,8 @@ Released under GPL-3.0.
 - leftOffset: 10
   $name: Left offset
   $name:uk-UA: Відступ зліва
-  $description: "Distance from the left taskbar edge, from 0 to 2000 pixels."
-  $description:uk-UA: "Відстань від лівого краю панелі, від 0 до 2000 пікселів."
+  $description: "Requested distance from the left taskbar edge in logical pixels. Nonnegative; automatically limited to the available taskbar space. Restored when more space becomes available."
+  $description:uk-UA: "Бажаний відступ від лівого краю в логічних пікселях. Невідємний; автоматично обмежується доступним місцем на панелі та відновлюється, коли місця стає більше."
 
 - monitor: 1
   $name: Taskbar monitor
@@ -672,8 +679,11 @@ HANDLE g_placementRetryWakeEvent = nullptr;
 [[clang::no_destroy]] Grid g_widget{nullptr};
 [[clang::no_destroy]] Viewbox g_widgetHost{nullptr};
 event_token g_rootSizeChangedToken{};
+event_token g_rootLayoutUpdatedToken{};
 [[clang::no_destroy]] Grid g_rootGrid{nullptr};
 [[clang::no_destroy]] FrameworkElement g_taskItemsRepeater{nullptr};
+[[clang::no_destroy]] FrameworkElement g_systemTrayFrame{nullptr};
+bool g_applyingTaskbarPlacement = false;
 double g_reservedMargin = 0.0;
 std::optional<double> g_lastAppliedRepeaterMarginLeft;
 double g_graphWidth = 96.0;
@@ -865,7 +875,7 @@ void LoadSettings() {
     settings.windowsThermalZoneAggregation = ParseThermalZoneAggregation(
         GetStringSetting(L"windowsThermalZoneAggregation"));
     settings.width = std::clamp(Wh_GetIntSetting(L"width"), 330, 800);
-    settings.leftOffset = std::clamp(Wh_GetIntSetting(L"leftOffset"), 0, 2000);
+    settings.leftOffset = std::max(Wh_GetIntSetting(L"leftOffset"), 0);
     settings.monitor = std::clamp(Wh_GetIntSetting(L"monitor"), 1, 32);
     settings.adaptiveColors = Wh_GetIntSetting(L"adaptiveColors") != 0;
     settings.reserveSpace = Wh_GetIntSetting(L"reserveSpace") != 0;
@@ -3821,13 +3831,6 @@ void ApplyWidgetGeometry(const ModSettings& settings) {
 
     g_widget.Width(settings.width);
     g_widget.Height(kWidgetHeight);
-    if (g_widgetHost) {
-        g_widgetHost.Width(settings.width);
-        g_widgetHost.Height(WidgetHeightForTaskbar(
-            g_rootGrid ? g_rootGrid.ActualHeight() : 0.0));
-        g_widgetHost.Margin(
-            Thickness{static_cast<double>(settings.leftOffset), 0, 0, 0});
-    }
     if (g_leftColumn) {
         g_leftColumn.Width(GridLength{leftWidth, GridUnitType::Pixel});
     }
@@ -3850,30 +3853,138 @@ void ApplyWidgetGeometry(const ModSettings& settings) {
     }
 }
 
-void ApplyReservedSpace(const ModSettings& settings) {
-    if (!g_taskItemsRepeater) {
+struct TaskbarPlacement {
+    double left = 0.0;
+    double width = 0.0;
+    double reserved = 0.0;
+};
+
+// Inputs and results are all XAML logical pixels on the selected taskbar.
+// Never rewrite the requested settings: a temporary clamp must be reversible.
+TaskbarPlacement ResolveTaskbarPlacement(const ModSettings& settings,
+                                        double availableWidth,
+                                        double buttonsWidth = 0.0,
+                                        double baseLeft = 0.0,
+                                        double baseRight = 0.0) {
+    if (!std::isfinite(availableWidth) || availableWidth <= 0.0) {
+        // Wait for the first measured layout before applying a large margin.
+        return {0.0, static_cast<double>(settings.width), 0.0};
+    }
+    auto positive = [](double value) {
+        return std::isfinite(value) ? std::max(0.0, value) : 0.0;
+    };
+    double budget = availableWidth;
+    if (settings.reserveSpace) {
+        budget = std::max(0.0, budget - positive(buttonsWidth) -
+                                   positive(baseLeft) - positive(baseRight));
+    }
+    double width = std::min(static_cast<double>(settings.width), budget);
+    double gap = settings.reserveSpace
+                     ? std::min(positive(settings.reserveGap), budget - width)
+                     : 0.0;
+    double left = std::clamp(static_cast<double>(settings.leftOffset), 0.0,
+                             std::max(0.0, budget - width - gap));
+    return {left, width,
+            settings.reserveSpace && width > 0.0 ? left + width + gap : 0.0};
+}
+
+double TaskbarAvailableWidth() {
+    double width = g_rootGrid ? g_rootGrid.ActualWidth() : 0.0;
+    if (!g_systemTrayFrame || g_systemTrayFrame.ActualWidth() <= 0.0) {
+        return width;
+    }
+    try {
+        // Use the tray's actual position, including any margins set by a styler.
+        auto point = g_systemTrayFrame.TransformToVisual(g_rootGrid)
+                         .TransformPoint({0.0f, 0.0f});
+        if (std::isfinite(point.X)) {
+            return std::clamp(static_cast<double>(point.X), 0.0, width);
+        }
+    } catch (...) {
+        // Some taskbar customizations expose the tray in a separate visual tree.
+    }
+    return std::max(0.0, width - g_systemTrayFrame.ActualWidth());
+}
+
+void ApplyTaskbarPlacement(const ModSettings& settings) {
+    if (!g_widgetHost || !g_rootGrid || g_applyingTaskbarPlacement) {
         return;
     }
+    g_applyingTaskbarPlacement = true;
+    struct PlacementGuard {
+        ~PlacementGuard() { g_applyingTaskbarPlacement = false; }
+    } clearGuard;
 
-    Thickness margin = g_taskItemsRepeater.Margin();
-    double baseLeft = margin.Left;
-    if (g_lastAppliedRepeaterMarginLeft &&
-        std::abs(margin.Left - *g_lastAppliedRepeaterMarginLeft) < 0.01) {
-        baseLeft -= g_reservedMargin;
-    } else if (g_reservedMargin != 0.0) {
-        Wh_Log(L"Taskbar repeater margin changed externally; adopting it as "
-               L"the new base");
+    Thickness margin{};
+    double buttonsWidth = 0.0;
+    if (g_taskItemsRepeater) {
+        margin = g_taskItemsRepeater.Margin();
+        if (g_lastAppliedRepeaterMarginLeft &&
+            std::abs(margin.Left - *g_lastAppliedRepeaterMarginLeft) < 0.01) {
+            margin.Left -= g_reservedMargin;
+        } else if (g_reservedMargin != 0.0) {
+            Wh_Log(L"Taskbar repeater margin changed externally; adopting it as "
+                   L"the new base");
+        }
+        // DesiredSize includes margins. Removing them keeps our own reservation
+        // out of the content measurement and avoids feedback on repeated layout.
+        buttonsWidth = std::max(g_taskItemsRepeater.ActualWidth(),
+            static_cast<double>(g_taskItemsRepeater.DesiredSize().Width) -
+                g_taskItemsRepeater.Margin().Left - margin.Right);
     }
-    g_reservedMargin = settings.reserveSpace
-                           ? settings.leftOffset + settings.width +
-                                 settings.reserveGap
-                           : 0.0;
-    margin.Left = baseLeft + g_reservedMargin;
-    g_taskItemsRepeater.Margin(margin);
-    if (g_reservedMargin != 0.0) {
-        g_lastAppliedRepeaterMarginLeft = margin.Left;
+    double measuredWidth = g_rootGrid.ActualWidth();
+    double availableWidth = TaskbarAvailableWidth();
+    TaskbarPlacement placement = ResolveTaskbarPlacement(
+        settings, availableWidth, buttonsWidth, margin.Left, margin.Right);
+    // A measured panel with no usable area differs from an unmeasured panel.
+    if (measuredWidth > 0.0 && availableWidth <= 0.0) {
+        placement = {};
+    }
+    auto visibility = placement.width > 0.0 ? Visibility::Visible
+                                             : Visibility::Collapsed;
+    if (g_widgetHost.Visibility() != visibility) {
+        g_widgetHost.Visibility(visibility);
+    }
+    if (!std::isfinite(g_widgetHost.Width()) ||
+        std::abs(g_widgetHost.Width() - placement.width) > 0.01) {
+        g_widgetHost.Width(placement.width);
+    }
+    double height = WidgetHeightForTaskbar(g_rootGrid.ActualHeight());
+    if (!std::isfinite(g_widgetHost.Height()) ||
+        std::abs(g_widgetHost.Height() - height) > 0.01) {
+        g_widgetHost.Height(height);
+    }
+    Thickness hostMargin{placement.left, 0, 0, 0};
+    if (std::abs(g_widgetHost.Margin().Left - placement.left) > 0.01) {
+        g_widgetHost.Margin(hostMargin);
+    }
+    if (g_taskItemsRepeater) {
+        double baseLeft = margin.Left;
+        margin.Left += placement.reserved;
+        if (std::abs(g_taskItemsRepeater.Margin().Left - margin.Left) > 0.01 ||
+            (placement.reserved == 0.0 && g_reservedMargin != 0.0)) {
+            g_taskItemsRepeater.Margin(margin);
+        }
+        // Track what was actually written, including when a subpixel update
+        // was skipped. Otherwise repeated layouts could accumulate base drift.
+        double appliedLeft = g_taskItemsRepeater.Margin().Left;
+        g_reservedMargin = appliedLeft - baseLeft;
+        g_lastAppliedRepeaterMarginLeft = g_reservedMargin != 0.0
+            ? std::optional<double>{appliedLeft} : std::nullopt;
     } else {
-        g_lastAppliedRepeaterMarginLeft.reset();
+        g_reservedMargin = 0.0;
+    }
+}
+
+void RefreshTaskbarPlacement() {
+    if (g_unloading) {
+        return;
+    }
+    try {
+        ApplyTaskbarPlacement(*CurrentSettings());
+    } catch (...) {
+        Wh_Log(L"Taskbar placement update failed: %08X",
+               static_cast<unsigned>(winrt::to_hresult()));
     }
 }
 
@@ -3932,7 +4043,7 @@ void ApplyWidgetSettings() {
 
     UpdateSparkline(g_cpuGraph, g_cpuHistory, settings);
     UpdateSparkline(g_gpuGraph, g_gpuHistory, settings);
-    ApplyReservedSpace(settings);
+    ApplyTaskbarPlacement(settings);
 
     UpdateTimerInterval();
 }
@@ -4351,6 +4462,16 @@ bool RemoveWidget() {
         }
     }
     g_rootSizeChangedToken = {};
+    if (g_rootGrid && g_rootLayoutUpdatedToken.value) {
+        try {
+            g_rootGrid.LayoutUpdated(g_rootLayoutUpdatedToken);
+        } catch (...) {
+            Wh_Log(L"Removing taskbar layout handler failed: %08X",
+                   static_cast<unsigned>(winrt::to_hresult()));
+            return false;
+        }
+    }
+    g_rootLayoutUpdatedToken = {};
 
     if (g_taskItemsRepeater && g_reservedMargin != 0.0) {
         Thickness margin = g_taskItemsRepeater.Margin();
@@ -4377,6 +4498,7 @@ bool RemoveWidget() {
     g_widgetHost = nullptr;
     g_rootGrid = nullptr;
     g_taskItemsRepeater = nullptr;
+    g_systemTrayFrame = nullptr;
     g_cpuLabel = nullptr;
     g_cpuUsageText = nullptr;
     g_cpuTempText = nullptr;
@@ -4528,19 +4650,25 @@ bool InjectWidget(FrameworkElement taskbarFrame) {
     g_rootGrid = root;
     g_widget = widget;
     g_widgetHost = host;
-    g_rootSizeChangedToken = root.SizeChanged([](auto const&, auto const&) {
-        if (g_unloading || !g_widgetHost || !g_rootGrid) {
-            return;
+    g_taskItemsRepeater =
+        FindDirectChildByName(root, L"TaskbarFrameRepeater");
+    FrameworkElement searchRoot = taskbarFrame;
+    if (auto xamlRoot = taskbarFrame.XamlRoot()) {
+        if (auto content = xamlRoot.Content().try_as<FrameworkElement>()) {
+            searchRoot = content;
         }
-        try {
-            double height = WidgetHeightForTaskbar(g_rootGrid.ActualHeight());
-            if (g_widgetHost.Height() != height) {
-                g_widgetHost.Height(height);
-            }
-        } catch (...) {
-            Wh_Log(L"Taskbar size update failed: %08X",
-                   static_cast<unsigned>(winrt::to_hresult()));
-        }
+    }
+    g_systemTrayFrame = FindChildRecursive(searchRoot, [](FrameworkElement child) {
+        return winrt::get_class_name(child) == L"SystemTray.SystemTrayFrame" ||
+               child.Name() == L"SystemTrayFrame";
+    });
+    auto sizeChanged = [](auto const&, auto const&) { RefreshTaskbarPlacement(); };
+    g_rootSizeChangedToken = root.SizeChanged(sizeChanged);
+    // SizeChanged can run before sibling positions have finished arranging.
+    // LayoutUpdated also covers a tray moved without a size change by a styler.
+    // Placement writes only changed properties, so the extra pass settles.
+    g_rootLayoutUpdatedToken = root.LayoutUpdated([](auto const&, auto const&) {
+        RefreshTaskbarPlacement();
     });
     g_actualThemeChangedToken = g_widget.ActualThemeChanged(
         [](auto const&, auto const&) {
@@ -4556,8 +4684,6 @@ bool InjectWidget(FrameworkElement taskbarFrame) {
                        static_cast<unsigned>(error));
             }
         });
-    g_taskItemsRepeater =
-        FindDirectChildByName(root, L"TaskbarFrameRepeater");
     g_reservedMargin = 0.0;
     g_lastAppliedRepeaterMarginLeft.reset();
 

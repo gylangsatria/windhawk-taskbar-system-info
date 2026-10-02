@@ -224,7 +224,7 @@ are not automatically a problem.
 | Setting | What it controls |
 | --- | --- |
 | **Widget width** | Total width of the two-column block. Increase it if values are clipped; decrease it when taskbar space is limited. |
-| **Left offset** | Distance from the far-left edge of the selected taskbar. Useful when Widgets/weather occupies the same area. |
+| **Left offset** | Requested nonnegative distance in logical pixels from the selected taskbar's left edge. Limited to the available width before the tray; Reserve space also preserves button width. The requested offset returns when the panel expands. |
 | **Taskbar monitor** | Taskbar that receives the widget. Monitor 1 is the primary display. An unavailable selection temporarily falls back to the primary taskbar. |
 | **Reserve space before the Start button** | Adds left margin to the taskbar button area so left-aligned buttons do not overlap the widget. Usually unnecessary with centered buttons. |
 | **Reserved space gap** | Extra empty space between the reserved widget area and the first taskbar button. |
