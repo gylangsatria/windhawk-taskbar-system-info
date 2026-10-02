@@ -73,6 +73,14 @@ counter. The UI consumes completed snapshots; new samples and Windows
 theme/display-change notifications trigger updates. A fallback UI timer follows
 the configured update interval.
 
+Native GPU-temperature failures are isolated from adapter selection and the
+GPU/VRAM counters. Unsupported queries and missing/invalid temperature readings
+are retried once per minute; other failures back off from 5 to 60 seconds.
+The next probe uses a fresh temperature handle, so recovery also works when a
+driver replacement keeps the same adapter LUID. A new LUID or a settings reload
+clears the temperature retry delay. Unavailable readings remain `--°C`; an old
+temperature is not displayed as a current measurement.
+
 Graphs use measurement timestamps and a fixed 0-100% scale. A missing sample
 or collection stall leaves a gap instead of erasing earlier history or drawing
 a line through unknown data. The collector uses deadlines rather than adding

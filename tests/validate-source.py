@@ -138,7 +138,7 @@ def main() -> int:
 
     expected = {
         "id": "taskbar-system-info",
-        "version": "1.5.1",
+        "version": "1.5.2",
         "author": "Yevhenii Starychenko",
         "github": "https://github.com/starychenko",
         "license": "GPL-3.0",
@@ -452,6 +452,14 @@ def main() -> int:
     assert "PublishMetrics(std::move(snapshot))" in source
     assert "g_cachedD3dkmtAdapterHandle" in source
     assert "GetD3dkmtAdapterHandle" in source
+    native_temperature = source[
+        source.index("void DeferGpuTemperatureRetry(") :
+        source.index("bool MatchesGpuAdapter(")
+    ]
+    assert "InvalidateGpuAdapterCache" not in native_temperature
+    assert "DeferGpuTemperatureRetry(status)" in native_temperature
+    assert "g_gpuTemperatureRetry.nextAttempt" in native_temperature
+    assert "g_gpuTemperatureRetry.adapterLuid" in native_temperature
     assert "constexpr int kMaxArrayReadAttempts = 4" in source
     assert "status != static_cast<PDH_STATUS>(PDH_MORE_DATA)" in source
     assert "std::optional<double> ReadCpuUsage()" in source
