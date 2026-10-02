@@ -323,8 +323,8 @@ Released under GPL-3.0.
 - leftOffset: 10
   $name: Left offset
   $name:uk-UA: Відступ зліва
-  $description: "Distance from the left taskbar edge, from 0 to 1000 pixels."
-  $description:uk-UA: "Відстань від лівого краю панелі, від 0 до 1000 пікселів."
+  $description: "Distance from the left taskbar edge, from 0 to 2000 pixels."
+  $description:uk-UA: "Відстань від лівого краю панелі, від 0 до 2000 пікселів."
 
 - monitor: 1
   $name: Taskbar monitor
@@ -865,7 +865,7 @@ void LoadSettings() {
     settings.windowsThermalZoneAggregation = ParseThermalZoneAggregation(
         GetStringSetting(L"windowsThermalZoneAggregation"));
     settings.width = std::clamp(Wh_GetIntSetting(L"width"), 330, 800);
-    settings.leftOffset = std::clamp(Wh_GetIntSetting(L"leftOffset"), 0, 1000);
+    settings.leftOffset = std::clamp(Wh_GetIntSetting(L"leftOffset"), 0, 2000);
     settings.monitor = std::clamp(Wh_GetIntSetting(L"monitor"), 1, 32);
     settings.adaptiveColors = Wh_GetIntSetting(L"adaptiveColors") != 0;
     settings.reserveSpace = Wh_GetIntSetting(L"reserveSpace") != 0;
