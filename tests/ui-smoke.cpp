@@ -146,6 +146,127 @@ int wmain(int argc, wchar_t** argv) {
             std::wcout << L"RENDERED " << scenario.name << L" host-height="
                        << g_widgetHost.ActualHeight() << L"\n";
         }
+        // Model taskbar buttons and tray inside the same selected XAML root.
+        // Exercise the production size handlers without refreshing settings.
+        Grid buttons;
+        buttons.Name(L"TaskbarFrameRepeater");
+        Grid buttonContent;
+        buttonContent.Width(300);
+        buttons.Children().Append(buttonContent);
+        buttons.Height(38);
+        buttons.HorizontalAlignment(HorizontalAlignment::Left);
+        buttons.VerticalAlignment(VerticalAlignment::Center);
+        buttons.Background(SolidColorBrush(Color{255, 70, 70, 70}));
+        Grid tray;
+        tray.Name(L"SystemTrayFrame");
+        tray.Width(120);
+        tray.Height(38);
+        tray.HorizontalAlignment(HorizontalAlignment::Right);
+        tray.VerticalAlignment(VerticalAlignment::Center);
+        tray.Background(SolidColorBrush(Color{255, 90, 90, 90}));
+        root.Children().Append(buttons);
+        root.Children().Append(tray);
+        if (!RemoveWidget() || !InjectWidget(frame))
+            throw std::runtime_error("Adaptive reinjection failed");
+        auto settings = std::make_shared<ModSettings>(*initialSettings);
+        settings->leftOffset = 3500;
+        settings->reserveSpace = true;
+        { std::lock_guard lock(g_settingsMutex); g_settings = settings; }
+        root.RequestedTheme(ElementTheme::Dark);
+        MetricsSnapshot populated;
+        populated.capturedAt = SampleTime::clock::now();
+        populated.cpuAvailable = populated.gpuAvailable = true;
+        populated.ramAvailable = populated.vramAvailable = true;
+        populated.cpu = 17; populated.gpu = 25;
+        populated.ram = 52; populated.ramUsedGb = 16.7; populated.ramTotalGb = 32;
+        populated.vram = 9; populated.vramUsedGb = 2.1; populated.vramTotalGb = 24;
+        populated.cpuTemp = 72; populated.gpuTemp = 56;
+        PublishMetrics(populated); UpdateWidgetText(true);
+        const int widths[] = {1920, 1280, 2560, 700, 400, 1920};
+        bool firstLayout = true;
+        for (int width : widths) {
+            frame.Width(width); root.Width(width);
+            frame.Height(48); root.Height(48);
+            frame.Measure(Size{static_cast<float>(width), 48});
+            frame.Arrange(Rect{0, 0, static_cast<float>(width), 48});
+            frame.UpdateLayout(); Pump();
+            // Settings are applied once; subsequent layouts use SizeChanged.
+            if (firstLayout) { ApplyWidgetSettings(); firstLayout = false; }
+            frame.UpdateLayout(); Pump();
+            double available = width - tray.ActualWidth();
+            auto expected = ResolveTaskbarPlacement(*settings, available, 300);
+            std::wcout << L"LAYOUT " << width << L" root=" << root.ActualWidth()
+                       << L" available=" << TaskbarAvailableWidth()
+                       << L" buttons=" << buttons.ActualWidth()
+                       << L" desired=" << buttons.DesiredSize().Width
+                       << L" margin=" << buttons.Margin().Left
+                       << L" offset=" << g_widgetHost.Margin().Left
+                       << L" width=" << g_widgetHost.Width()
+                       << L" reserved=" << g_reservedMargin
+                       << L" expected=" << expected.left << L"," << expected.width
+                       << L"," << expected.reserved << L"\n";
+            if (!std::isfinite(g_widgetHost.Width()) ||
+                !std::isfinite(g_widgetHost.Height()) ||
+                std::abs(g_widgetHost.Margin().Left - expected.left) > 0.1 ||
+                std::abs(g_reservedMargin - expected.reserved) > 0.1 ||
+                std::abs(g_widgetHost.Width() - expected.width) > 0.1 ||
+                (expected.width == 0 && g_widgetHost.Visibility() != Visibility::Collapsed)) {
+                throw std::runtime_error("Adaptive resize did not preserve widget/buttons/tray");
+            }
+            if (g_widgetHost.Visibility() == Visibility::Visible) {
+                auto position = g_widgetHost.TransformToVisual(root).TransformPoint({0, 0});
+                if (position.X + g_widgetHost.ActualWidth() > available + 0.1 ||
+                    g_widgetHost.ActualHeight() > root.ActualHeight() + 0.1)
+                    throw std::runtime_error("Rendered widget exceeds available panel bounds");
+            }
+            double before = g_reservedMargin;
+            ApplyTaskbarPlacement(*settings); frame.UpdateLayout(); Pump();
+            if (std::abs(before - g_reservedMargin) > 0.1)
+                throw std::runtime_error("Reservation accumulated after repeated placement");
+            std::wcout << L"RESIZED " << width << L" offset=" << expected.left
+                       << L" width=" << expected.width << L" reserved=" << g_reservedMargin << L"\n";
+            if (width == 1280 || width == 700) {
+                SaveImage(frame, argv[1], width == 1280 ? L"adaptive-1280.png" : L"adaptive-700.png");
+            }
+        }
+        // Expanding the tray and adding buttons must reclaim space immediately.
+        tray.Width(240); buttonContent.Width(600);
+        frame.UpdateLayout(); Pump();
+        auto crowded = ResolveTaskbarPlacement(*settings, 1920 - 240, 600);
+        if (std::abs(g_reservedMargin - crowded.reserved) > 0.1)
+            throw std::runtime_error("Tray/button size changes did not update reservation");
+        // Moving a tray without changing its size must update the usable width.
+        tray.Margin(Thickness{0, 0, 20, 0});
+        frame.UpdateLayout(); Pump();
+        crowded = ResolveTaskbarPlacement(*settings, 1920 - 240 - 20, 600);
+        if (std::abs(g_reservedMargin - crowded.reserved) > 0.1)
+            throw std::runtime_error("Tray movement without resize did not update placement");
+        tray.Margin(Thickness{}); frame.UpdateLayout(); Pump();
+        // Reservation uses the external base margin exactly once.
+        buttons.Margin(Thickness{20, 0, 10, 0});
+        ApplyTaskbarPlacement(*settings); frame.UpdateLayout(); Pump();
+        crowded = ResolveTaskbarPlacement(*settings, 1920 - 240, 600, 20, 10);
+        if (std::abs(buttons.Margin().Left - (20 + crowded.reserved)) > 0.1)
+            throw std::runtime_error("External repeater margins were not preserved");
+        // Fractional measurements must settle without accumulating margins.
+        buttonContent.Width(600.125);
+        tray.Margin(Thickness{0, 0, 20.125, 0});
+        buttons.Margin(Thickness{20.125, 0, 10.125, 0});
+        ApplyTaskbarPlacement(*settings); frame.UpdateLayout(); Pump();
+        double stableMargin = buttons.Margin().Left;
+        for (int i = 0; i < 100; ++i) {
+            ApplyTaskbarPlacement(*settings); frame.UpdateLayout(); Pump();
+        }
+        if (std::abs(buttons.Margin().Left - stableMargin) > 0.01)
+            throw std::runtime_error("Fractional placement margins drifted");
+        settings = std::make_shared<ModSettings>(*settings);
+        settings->reserveSpace = false;
+        { std::lock_guard lock(g_settingsMutex); g_settings = settings; }
+        ApplyWidgetSettings(); frame.UpdateLayout(); Pump();
+        if (std::abs(buttons.Margin().Left - 20.125) > 0.1 || g_reservedMargin != 0)
+            throw std::runtime_error("Disabling reservation did not restore external margin");
+        std::wcout << L"PASS: XAML resize, restore, tray growth, buttons, external margins, reserve toggle\n";
+
     } catch (const hresult_error& error) {
         std::wcerr << L"XAML failure 0x" << std::hex << static_cast<uint32_t>(error.code())
                    << L": " << error.message().c_str() << L"\n";
@@ -159,7 +280,8 @@ int wmain(int argc, wchar_t** argv) {
     RemoveTaskbarUiContext cleanup;
     RemoveFromCurrentTaskbar(&cleanup);
     if (!cleanup.succeeded || g_widget || g_widgetHost || g_timer ||
-        g_rootSizeChangedToken.value || g_actualThemeChangedToken.value) {
+        g_rootSizeChangedToken.value || g_actualThemeChangedToken.value ||
+        g_rootLayoutUpdatedToken.value || g_systemTrayFrame) {
         std::cerr << "XAML cleanup did not release all widget resources\n";
         result = 1;
     }

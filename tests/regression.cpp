@@ -87,6 +87,59 @@ void HistoryAndScheduling() {
           "explicit dedicated override must resolve ambiguous legacy 512 MiB GPUs");
 }
 
+void AdaptivePlacement() {
+    ModSettings settings;
+    settings.width = 410;
+    settings.leftOffset = 2000;
+    auto p = ResolveTaskbarPlacement(settings, 1920);
+    Check(Near(p.left, 1510) && Near(p.width, 410), "1080p offset must fit the whole widget");
+    p = ResolveTaskbarPlacement(settings, 2560.0 / 1.5);
+    Check(Near(p.left, 2560.0 / 1.5 - 410), "150 percent uses logical panel width");
+    settings.leftOffset = 3500;
+    p = ResolveTaskbarPlacement(settings, 5120);
+    Check(Near(p.left, 3500), "ultrawide offsets must not have an arbitrary 2000 limit");
+    p = ResolveTaskbarPlacement(settings, 300);
+    Check(Near(p.left, 0) && Near(p.width, 300), "very narrow panel must shrink the host");
+    p = ResolveTaskbarPlacement(settings, 0);
+    Check(Near(p.left, 0) && Near(p.reserved, 0), "unmeasured panel must defer a large offset");
+    p = ResolveTaskbarPlacement(settings, std::numeric_limits<double>::quiet_NaN());
+    Check(Near(p.left, 0) && std::isfinite(p.width), "invalid measurement must remain finite");
+
+    settings.reserveSpace = true;
+    settings.reserveGap = 8;
+    settings.leftOffset = 2000;
+    p = ResolveTaskbarPlacement(settings, 1700, 500, 10, 20);
+    Check(Near(p.left, 752) && Near(p.reserved, 1170),
+          "reservation must preserve buttons and external margins");
+    p = ResolveTaskbarPlacement(settings, 700, 500);
+    Check(Near(p.left, 0) && Near(p.width, 200) && Near(p.reserved, 200),
+          "buttons have priority when only part of the widget fits");
+    p = ResolveTaskbarPlacement(settings, 400, 500);
+    Check(Near(p.width, 0) && Near(p.reserved, 0), "no room must not displace taskbar buttons");
+    p = ResolveTaskbarPlacement(settings, 417, 0);
+    Check(Near(p.width, 410) && Near(p.reserved, 417), "reduce gap before shrinking widget");
+
+    for (double physicalWidth : {1280.0, 1920.0, 2560.0, 3840.0, 5120.0}) {
+        for (double scale : {1.0, 1.25, 1.5, 2.0}) {
+            for (bool reserve : {false, true}) {
+                settings.reserveSpace = reserve;
+                double available = physicalWidth / scale - 180;
+                p = ResolveTaskbarPlacement(settings, available, 480, 10, 8);
+                Check(p.left >= 0 && p.width >= 0 &&
+                          p.left + p.width <= available + 0.001 &&
+                          (!reserve || p.reserved <= std::max(0.0, available - 480 - 18) + 0.001),
+                      "placement matrix must stay inside panel and preserve buttons");
+            }
+        }
+    }
+    Check(settings.leftOffset == 2000, "clamping must not rewrite user settings");
+    settings.reserveSpace = false;
+    auto small = ResolveTaskbarPlacement(settings, 960);
+    auto large = ResolveTaskbarPlacement(settings, 3840);
+    Check(small.left < large.left && Near(large.left, 2000),
+          "requested offset must return after moving to a wider panel");
+}
+
 void SetMapping(std::vector<HwInfoSensorPrefix> sensors,
                 std::vector<HwInfoReadingPrefix> readings) {
     HwInfoHeader header{};
@@ -387,6 +440,8 @@ int main() {
     try {
         HistoryAndScheduling();
         std::cout << "PASS: timestamped history, scheduling, formatting, layout bounds\n";
+        AdaptivePlacement();
+        std::cout << "PASS: adaptive placement, DPI matrix, reservation bounds and restoration\n";
         SensorIdentity();
         std::cout << "PASS: production HWiNFO mapping and registry cache reordering\n";
         PdhRecovery();
