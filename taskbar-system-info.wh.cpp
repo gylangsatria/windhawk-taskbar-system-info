@@ -4,7 +4,7 @@
 // @name:uk-UA      Системний монітор панелі завдань
 // @description     A quiet two-column CPU, GPU, RAM and VRAM monitor with 60-second history graphs for the Windows 11 taskbar.
 // @description:uk-UA Компактний монітор CPU, GPU, RAM і VRAM із 60-секундними графіками для панелі завдань Windows 11.
-// @version         1.5.1
+// @version         1.5.2
 // @author          Yevhenii Starychenko
 // @github          https://github.com/starychenko
 // @homepage        https://github.com/starychenko/windhawk-taskbar-system-info
@@ -120,6 +120,14 @@ use separate queries, so GPU recovery does not reset the CPU thermal-zone
 counter. The UI consumes completed snapshots; new samples and Windows
 theme/display-change notifications trigger updates. A fallback UI timer follows
 the configured update interval.
+
+Native GPU-temperature failures are isolated from adapter selection and the
+GPU/VRAM counters. Unsupported queries and missing/invalid temperature readings
+are retried once per minute; other failures back off from 5 to 60 seconds.
+The next probe uses a fresh temperature handle, so recovery also works when a
+driver replacement keeps the same adapter LUID. A new LUID or a settings reload
+clears the temperature retry delay. Unavailable readings remain `--°C`; an old
+temperature is not displayed as a current measurement.
 
 Graphs use measurement timestamps and a fixed 0-100% scale. A missing sample
 or collection stall leaves a gap instead of erasing earlier history or drawing
@@ -2211,6 +2219,9 @@ constexpr UINT kAdapterTypeQueryType = 15;
 constexpr UINT kAdapterPerfDataQueryType = 62;  // KMTQAITYPE_ADAPTERPERFDATA
 constexpr ULONG kMaxD3dkmtAdapters = 16;
 constexpr UINT kHybridIntegratedAdapterFlag = 1u << 5;
+constexpr LONG kStatusNotImplemented = static_cast<LONG>(0xC0000002u);
+constexpr LONG kStatusNotSupported = static_cast<LONG>(0xC00000BBu);
+constexpr LONG kStatusInvalidHandle = static_cast<LONG>(0xC0000008u);
 
 using D3DKMTEnumAdapters2_t = LONG(WINAPI*)(D3DKMT_ENUMADAPTERS2*);
 using D3DKMTOpenAdapterFromLuid_t =
@@ -2244,6 +2255,13 @@ bool g_gpuAdapterIdentityChanged = false;
 bool g_hasResolvedGpuAdapterIdentity = false;
 D3DKMT_HANDLE g_cachedD3dkmtAdapterHandle = 0;
 LUID g_cachedD3dkmtAdapterLuid{};
+
+struct GpuTemperatureRetryState {
+    std::optional<LUID> adapterLuid;
+    unsigned failures = 0;
+    SampleTime nextAttempt{};
+};
+GpuTemperatureRetryState g_gpuTemperatureRetry;
 
 bool SameLuid(const LUID& left, const LUID& right) {
     return left.HighPart == right.HighPart && left.LowPart == right.LowPart;
@@ -2536,6 +2554,23 @@ std::optional<std::wstring> ResolveGpuTemperatureAdapterName(
     return std::nullopt;
 }
 
+void DeferGpuTemperatureRetry(LONG status) {
+    // This provider is optional: an unsupported perf-data query must not
+    // invalidate the adapter identity or the independent GPU/VRAM counters.
+    // Reprobe unavailable sensors once a minute, including after a driver
+    // replacement that preserves the LUID. Transient failures start at 5 s.
+    unsigned exponent = std::min(g_gpuTemperatureRetry.failures, 4u);
+    g_gpuTemperatureRetry.failures = exponent + 1;
+    bool unsupported = status == kStatusNotImplemented ||
+                       status == kStatusNotSupported;
+    unsigned delaySeconds = status == 0 || unsupported
+                                ? 60u
+                                : std::min(5u << exponent, 60u);
+    g_gpuTemperatureRetry.nextAttempt =
+        std::chrono::steady_clock::now() + std::chrono::seconds(delaySeconds);
+    CloseCachedD3dkmtAdapterHandle();
+}
+
 std::optional<D3DKMT_HANDLE> GetD3dkmtAdapterHandle(
     const GpuAdapterInfo& adapter) {
     if (g_cachedD3dkmtAdapterHandle &&
@@ -2546,9 +2581,9 @@ std::optional<D3DKMT_HANDLE> GetD3dkmtAdapterHandle(
     CloseCachedD3dkmtAdapterHandle();
     D3DKMT_OPENADAPTERFROMLUID openAdapter{};
     openAdapter.AdapterLuid = adapter.luidValue;
-    if (g_d3dkmtOpenAdapterFromLuid(&openAdapter) != 0 ||
-        !openAdapter.hAdapter) {
-        InvalidateGpuAdapterCache();
+    LONG status = g_d3dkmtOpenAdapterFromLuid(&openAdapter);
+    if (status != 0 || !openAdapter.hAdapter) {
+        DeferGpuTemperatureRetry(status != 0 ? status : kStatusInvalidHandle);
         return std::nullopt;
     }
     g_cachedD3dkmtAdapterHandle = openAdapter.hAdapter;
@@ -2568,6 +2603,17 @@ void ReadWindowsGpuTemperature(MetricsSnapshot& snapshot,
         return;
     }
 
+    if (!g_gpuTemperatureRetry.adapterLuid ||
+        !SameLuid(*g_gpuTemperatureRetry.adapterLuid, adapter->luidValue)) {
+        CloseCachedD3dkmtAdapterHandle();
+        g_gpuTemperatureRetry = {};
+        g_gpuTemperatureRetry.adapterLuid = adapter->luidValue;
+    }
+    if (std::chrono::steady_clock::now() <
+        g_gpuTemperatureRetry.nextAttempt) {
+        return;
+    }
+
     auto adapterHandle = GetD3dkmtAdapterHandle(*adapter);
     if (!adapterHandle) {
         return;
@@ -2581,19 +2627,16 @@ void ReadWindowsGpuTemperature(MetricsSnapshot& snapshot,
     queryInfo.PrivateDriverDataSize = sizeof(perfData);
 
     LONG status = g_d3dkmtQueryAdapterInfo(&queryInfo);
-    if (status != 0) {
-        // A driver restart can invalidate both the KMT handle and its LUID.
-        // Drop the cached identity and let the next sample resolve it again.
-        InvalidateGpuAdapterCache();
-    }
-
     // The driver reports tenths of a degree Celsius. Zero means unavailable;
     // reject values above 200 C as invalid driver data.
     if (status != 0 || perfData.Temperature == 0 ||
         perfData.Temperature > 2000) {
+        DeferGpuTemperatureRetry(status);
         return;
     }
 
+    g_gpuTemperatureRetry.failures = 0;
+    g_gpuTemperatureRetry.nextAttempt = {};
     snapshot.gpuTemp = perfData.Temperature / 10.0;
     snapshot.gpuTempProvider = TemperatureProvider::WindowsD3dkmt;
 }
@@ -3239,6 +3282,7 @@ void MetricsWorkerProc() {
             settings = CurrentSettings();
             ReadCpuUsage();
             InvalidateGpuAdapterCache();
+            g_gpuTemperatureRetry = {};
             g_nextCpuPdhCounterRetry = {};
             EnsureCpuPdhQuery(*settings);
             EnsurePdhQuery();
@@ -5877,6 +5921,7 @@ void CloseMetricSources() {
     CloseCpuPdhQuery();
     g_nextCpuPdhCounterRetry = {};
     InvalidateGpuAdapterCache();
+    g_gpuTemperatureRetry = {};
     g_hwInfoSharedMemoryCache = {};
     g_hwInfoGadgetRegistryCache = {};
     g_nextPdhCounterRetry = {};

@@ -275,6 +275,7 @@ void ResetPdh() {
     fake::enginesAvailable = true;
     fake::hardArrays = false;
     fake::invalidEngine = false;
+    fake::growArrayAttempts = 0;
     fake::opens = 0;
     CacheAdapter();
 }
@@ -362,44 +363,192 @@ void PdhRecovery() {
 
 int kmtOpens = 0;
 int kmtCloses = 0;
-bool kmtFails = false;
-LONG WINAPI TestKmtOpen(D3DKMT_OPENADAPTERFROMLUID* request) {
-    request->hAdapter = static_cast<D3DKMT_HANDLE>(++kmtOpens);
+int kmtQueries = 0;
+int kmtEnumerations = 0;
+LONG kmtQueryStatus = 0;
+LONG kmtOpenStatus = 0;
+bool kmtEmptyHandle = false;
+ULONG kmtTemperature = 535;
+GpuAdapterInfo kmtAdapter;
+LONG WINAPI TestKmtEnumerate(D3DKMT_ENUMADAPTERS2* request) {
+    ++kmtEnumerations;
+    request->NumAdapters = 1;
+    request->pAdapters[0] = {99, kmtAdapter.luidValue, 1, FALSE};
     return 0;
+}
+LONG WINAPI TestKmtOpen(D3DKMT_OPENADAPTERFROMLUID* request) {
+    ++kmtOpens;
+    request->hAdapter = kmtOpenStatus || kmtEmptyHandle
+                           ? 0 : static_cast<D3DKMT_HANDLE>(kmtOpens);
+    return kmtOpenStatus;
 }
 LONG WINAPI TestKmtClose(const D3DKMT_CLOSEADAPTER*) {
     ++kmtCloses;
     return 0;
 }
 LONG WINAPI TestKmtQuery(D3DKMT_QUERYADAPTERINFO* request) {
-    if (kmtFails) return static_cast<LONG>(0xC000000D);
+    if (request->Type == kAdapterRegistryInfoQueryType) {
+        auto* info = static_cast<D3DKMT_ADAPTERREGISTRYINFO*>(request->pPrivateDriverData);
+        std::wcscpy(info->AdapterString, L"Test GPU");
+        return 0;
+    }
+    if (request->Type == kAdapterSegmentSizeQueryType) {
+        auto* info = static_cast<D3DKMT_SEGMENTSIZEINFO*>(request->pPrivateDriverData);
+        info->DedicatedVideoMemorySize = kmtAdapter.dedicatedVideoMemory;
+        info->SharedSystemMemorySize = kmtAdapter.sharedSystemMemory;
+        return 0;
+    }
+    if (request->Type == kAdapterTypeQueryType) {
+        *static_cast<D3DKMT_ADAPTERTYPE*>(request->pPrivateDriverData) = {};
+        return 0;
+    }
+    ++kmtQueries;
+    if (kmtQueryStatus) return kmtQueryStatus;
     auto* data = static_cast<D3DKMT_ADAPTER_PERFDATA*>(request->pPrivateDriverData);
-    data->Temperature = 535;
+    data->Temperature = kmtTemperature;
     return 0;
 }
-void NativeTemperatureRecovery() {
-    CacheAdapter();
+void ResetNativeTemperature() {
+    ResetPdh();
+    kmtOpens = kmtCloses = kmtQueries = kmtEnumerations = 0;
+    kmtQueryStatus = kmtOpenStatus = 0;
+    kmtEmptyHandle = false;
+    kmtTemperature = 535;
+    kmtAdapter = TestAdapter();
+    g_d3dkmtEnumAdapters2 = TestKmtEnumerate;
     g_d3dkmtOpenAdapterFromLuid = TestKmtOpen;
     g_d3dkmtCloseAdapter = TestKmtClose;
     g_d3dkmtQueryAdapterInfo = TestKmtQuery;
-    auto sample = [] {
-        MetricsSnapshot snapshot;
-        ReadWindowsGpuTemperature(snapshot, ModSettings{});
-        return snapshot;
-    };
-    Check(sample().gpuTemp == 53.5, "native GPU temperature must convert tenths of a degree");
-    Check(sample().gpuTemp == 53.5 && kmtOpens == 1,
+}
+MetricsSnapshot NativeTemperatureSnapshot() {
+    MetricsSnapshot snapshot;
+    ReadWindowsGpuTemperature(snapshot, ModSettings{});
+    return snapshot;
+}
+void CheckTemperatureRetryDelay(int seconds) {
+    auto remaining = g_gpuTemperatureRetry.nextAttempt - SampleTime::clock::now();
+    Check(remaining > std::chrono::seconds(seconds - 1) &&
+              remaining <= std::chrono::seconds(seconds),
+          "native temperature retry deadline must use the bounded delay");
+}
+void NativeTemperatureRecovery() {
+    ResetNativeTemperature();
+    Check(NativeTemperatureSnapshot().gpuTemp == 53.5,
+          "native GPU temperature must convert tenths of a degree");
+    Check(NativeTemperatureSnapshot().gpuTemp == 53.5 && kmtOpens == 1,
           "native handle must be reused between samples");
-    kmtFails = true;
-    Check(!sample().gpuTemp && kmtCloses == 1 && !g_cachedD3dkmtAdapterHandle &&
-              !g_cachedGpuAdapterResolved,
-          "stale KMT handle must invalidate both the handle and adapter cache");
-    kmtFails = false;
-    CacheAdapter();
-    Check(sample().gpuTemp == 53.5 && kmtOpens == 2,
+    kmtQueryStatus = kStatusInvalidHandle;
+    auto adapterDeadline = g_nextGpuAdapterResolve;
+    Check(!NativeTemperatureSnapshot().gpuTemp && kmtCloses == 1 && !g_cachedD3dkmtAdapterHandle &&
+              g_cachedGpuAdapterResolved && g_cachedGpuAdapterInfo,
+          "a temperature failure must not invalidate the shared GPU adapter cache");
+    Check(g_nextGpuAdapterResolve == adapterDeadline,
+          "temperature failure must preserve normal adapter refresh scheduling");
+    CheckTemperatureRetryDelay(5);
+    kmtQueryStatus = 0;
+    Check(!NativeTemperatureSnapshot().gpuTemp && kmtOpens == 1,
+          "a failed native handle must not be reopened on every sample");
+    g_gpuTemperatureRetry.nextAttempt = {};
+    Check(NativeTemperatureSnapshot().gpuTemp == 53.5 && kmtOpens == 2,
           "native temperature must resume with a fresh handle");
+    Check(g_gpuTemperatureRetry.failures == 0 &&
+              g_gpuTemperatureRetry.nextAttempt == SampleTime{},
+          "successful temperature recovery must clear the backoff");
     CloseMetricSources();
     Check(kmtCloses == 2, "shutdown must close the recovered native handle");
+    Check(!g_gpuTemperatureRetry.adapterLuid,
+          "provider shutdown must clear native temperature retry state");
+
+    for (LONG unsupported : {kStatusNotImplemented, kStatusNotSupported}) {
+        ResetNativeTemperature();
+        kmtQueryStatus = unsupported;
+        PdhSnapshot();
+        auto healthy = PdhSnapshot();
+        auto* gpuQuery = g_pdhQuery;
+        int queryOpens = fake::opens;
+        adapterDeadline = g_nextGpuAdapterResolve;
+        ReadTemperatures(healthy, ModSettings{}); // Default Automatic fallback.
+        Check(!healthy.gpuTemp && kmtQueries == 1 && kmtOpens == 1,
+              "Automatic must try the native fallback once when HWiNFO is absent");
+        CheckTemperatureRetryDelay(60);
+        bool otherMetricsStayedAvailable = true;
+        for (int i = 0; i < 80; ++i) {
+            auto snapshot = PdhSnapshot();
+            ReadTemperatures(snapshot, ModSettings{});
+            otherMetricsStayedAvailable &= snapshot.cpuAvailable && snapshot.ramAvailable &&
+                snapshot.gpuAvailable && snapshot.vramAvailable && !snapshot.gpuTemp;
+        }
+        Check(otherMetricsStayedAvailable,
+              "persistent temperature refusal must preserve CPU/RAM/GPU/VRAM");
+        Check(fake::opens == queryOpens && g_pdhQuery == gpuQuery,
+              "persistent temperature refusal must preserve the independent PDH queries");
+        Check(kmtQueries == 1 && kmtOpens == 1 && kmtEnumerations == 0 &&
+                  g_nextGpuAdapterResolve == adapterDeadline,
+              "unsupported temperature must not churn handles or enumerate adapters every sample");
+        g_nextGpuAdapterResolve = {};
+        Check(GetGpuAdapterInfo(L"").has_value() && kmtEnumerations == 1,
+              "the independent periodic adapter refresh must still run");
+        Check(!NativeTemperatureSnapshot().gpuTemp && kmtQueries == 1,
+              "same-LUID cache refresh must not reset temperature unavailability");
+        kmtQueryStatus = 0;
+        g_gpuTemperatureRetry.nextAttempt = {};
+        Check(NativeTemperatureSnapshot().gpuTemp == 53.5 && kmtQueries == 2,
+              "periodic reprobe must recover when a new driver preserves the LUID");
+
+        kmtQueryStatus = unsupported;
+        NativeTemperatureSnapshot();
+        ++kmtAdapter.luidValue.LowPart;
+        kmtAdapter.luid = FormatAdapterLuid(kmtAdapter.luidValue);
+        g_nextGpuAdapterResolve = {};
+        kmtQueryStatus = 0;
+        Check(NativeTemperatureSnapshot().gpuTemp == 53.5 &&
+                  SameLuid(*g_gpuTemperatureRetry.adapterLuid, kmtAdapter.luidValue),
+              "a newly resolved LUID must bypass the old adapter's cooldown");
+    }
+
+    ResetNativeTemperature();
+    kmtQueryStatus = static_cast<LONG>(0xC000000Du); // Ambiguous INVALID_PARAMETER.
+    for (int delay : {5, 10, 20, 40, 60, 60}) {
+        g_gpuTemperatureRetry.nextAttempt = {};
+        Check(!NativeTemperatureSnapshot().gpuTemp && g_cachedGpuAdapterResolved,
+              "unknown persistent failures must not invalidate adapter identity");
+        CheckTemperatureRetryDelay(delay);
+    }
+    kmtQueryStatus = 0;
+    g_gpuTemperatureRetry.nextAttempt = {};
+    Check(NativeTemperatureSnapshot().gpuTemp == 53.5,
+          "unknown errors must never permanently disable native temperature");
+
+    ResetNativeTemperature();
+    kmtOpenStatus = kStatusInvalidHandle;
+    Check(!NativeTemperatureSnapshot().gpuTemp && g_cachedGpuAdapterResolved &&
+              kmtQueries == 0 && kmtCloses == 0,
+          "failed open must not invalidate adapter identity or query an invalid handle");
+    CheckTemperatureRetryDelay(5);
+    kmtOpenStatus = 0;
+    Check(!NativeTemperatureSnapshot().gpuTemp && kmtOpens == 1,
+          "open failures must honor the retry interval");
+    g_gpuTemperatureRetry.nextAttempt = {};
+    Check(NativeTemperatureSnapshot().gpuTemp == 53.5,
+          "native open must recover with the same cached adapter identity");
+
+    ResetNativeTemperature();
+    kmtEmptyHandle = true;
+    Check(!NativeTemperatureSnapshot().gpuTemp && kmtQueries == 0 &&
+              g_cachedGpuAdapterResolved,
+          "a successful open returning no handle must be treated as transient");
+    CheckTemperatureRetryDelay(5);
+
+    for (ULONG invalidTemperature : {0ul, 2001ul}) {
+        ResetNativeTemperature();
+        kmtTemperature = invalidTemperature;
+        Check(!NativeTemperatureSnapshot().gpuTemp, "invalid native temperatures must stay unavailable");
+        CheckTemperatureRetryDelay(60);
+        Check(!NativeTemperatureSnapshot().gpuTemp && kmtQueries == 1,
+              "invalid readings must not be polled on every sample");
+    }
+    CloseMetricSources();
+    g_d3dkmtEnumAdapters2 = nullptr;
     g_d3dkmtOpenAdapterFromLuid = nullptr;
     g_d3dkmtCloseAdapter = nullptr;
     g_d3dkmtQueryAdapterInfo = nullptr;
@@ -447,7 +596,7 @@ int main() {
         PdhRecovery();
         std::cout << "PASS: production PDH stale/parked/LUID/error/priming paths\n";
         NativeTemperatureRecovery();
-        std::cout << "PASS: production native-temperature stale-handle recovery\n";
+        std::cout << "PASS: native temperature refusal/backoff/open failure/same-LUID recovery\n";
         WindowNotifications();
         std::cout << "PASS: native hidden-window notification and detach lifecycle\n";
         std::cout << checks << " behavioral checks passed (synthetic providers, no Explorer injection).\n";
