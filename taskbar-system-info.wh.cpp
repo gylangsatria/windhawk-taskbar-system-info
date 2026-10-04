@@ -2,16 +2,16 @@
 // @id              taskbar-system-info
 // @name            Taskbar System Info
 // @name:uk-UA      Системний монітор панелі завдань
-// @description     A quiet two-column CPU, GPU, RAM and VRAM monitor with 60-second history graphs for the Windows 11 taskbar.
-// @description:uk-UA Компактний монітор CPU, GPU, RAM і VRAM із 60-секундними графіками для панелі завдань Windows 11.
-// @version         1.5.2
+// @description     CPU, GPU, RAM and VRAM on the Windows 11 taskbar, with temperatures, history graphs, automatic placement and live dragging.
+// @description:uk-UA CPU, GPU, RAM і VRAM на панелі завдань Windows 11: температури, графіки історії, автоматичне розташування та перетягування живого віджета.
+// @version         1.6.0
 // @author          Yevhenii Starychenko
 // @github          https://github.com/starychenko
 // @homepage        https://github.com/starychenko/windhawk-taskbar-system-info
 // @license         GPL-3.0
 // @include         explorer.exe
 // @architecture    x86-64
-// @compilerOptions -lole32 -loleaut32 -lruntimeobject -lpdh -ldxgi -lcomctl32 -DWIN32_LEAN_AND_MEAN
+// @compilerOptions -lole32 -loleaut32 -lruntimeobject -lpdh -ldxgi -lcomctl32 -lgdi32 -lgdiplus -DWIN32_LEAN_AND_MEAN
 // ==/WindhawkMod==
 
 // Taskbar XAML discovery and window-thread marshaling are based on techniques
@@ -53,277 +53,340 @@ SOFTWARE.
 /*
 # Taskbar System Info
 
-A compact, click-through system monitor for the far-left free area of the
-Windows 11 taskbar. It is designed for a quick administrator glance: current
-values show what is happening now, while two restrained history traces reveal
-whether a CPU or GPU spike is momentary or sustained.
+CPU, GPU, RAM and VRAM on the Windows 11 taskbar. Usage, temperatures and
+history graphs stay in one small widget, so you can check them without opening
+another window.
 
-![Taskbar System Info preview](https://raw.githubusercontent.com/starychenko/windhawk-taskbar-system-info/main/assets/taskbar-system-info.png)
+![Dark theme with sample CPU, GPU, RAM and VRAM readings](https://raw.githubusercontent.com/starychenko/windhawk-taskbar-system-info/main/assets/widget-dark.png)
 
-The fixed two-column layout keeps every metric in a predictable place:
+The images in this page are renders of the current widget and move mode with
+sample readings. They show the layout and states, not a live Explorer session.
 
-```text
-CPU  10%  72°C  [60-second graph]    RAM   52%  16.7/32G
-GPU   4%  56°C  [60-second graph]    VRAM   9%   2.1/24G
-```
+The widget shows CPU and GPU usage, their temperatures, and a history graph for
+each. RAM and VRAM show the percentage, used/total capacity and a thin usage bar.
+Values stay in fixed columns as the readings change. CPU/GPU fields are compact,
+with six logical pixels of padding on each side of the widget.
 
-CPU and GPU history uses a fixed 0-100% scale. RAM and VRAM use thin capacity
-bars. Fixed-width fields prevent the layout from shifting as values change.
-Normal values remain monochrome; only warning and critical readings receive
-color. Adaptive colors are enabled by default: normal text follows the native
-taskbar foreground, while graphs and alerts switch between contrast-checked
-light and dark palettes as the taskbar theme changes. Windows high-contrast mode
-uses its system highlight colors. Disable the adaptive option to use the manual
-color settings exactly. Network and disk activity are intentionally not
-collected.
+Normal readings use the taskbar text color. Temperature and memory alerts add
+color when a threshold is reached. Light, dark and Windows high-contrast themes
+are supported. You can also set the fonts, colors, opacity and alert thresholds.
 
-Unlike the performance placeholders in
-[Taskbar Clock Customization](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-clock-customization.wh.cpp),
-this mod does not alter the clock. It uses the free far-left taskbar area for a
-stable 2x2 dashboard with rolling graphs, capacity bars and temperature alerts.
+In normal use, clicks pass through to the taskbar. Press **Ctrl+Alt+M** when you
+want to move the widget. It stays live, gets a hand cursor and a translucent
+background only while dragging, and snaps to a usable place. A red frame means the position cannot be
+saved. **Enter** saves it, **Esc** cancels it.
 
 ## Quick start
 
-1. Install and enable the mod. CPU, GPU, RAM and VRAM normally work without any
-   additional software.
-2. Keep **Temperature source** on **Automatic**. If a temperature stays at
-   `--°C`, Windows probably does not expose that sensor; configure HWiNFO as
-   described below.
-3. If the widget overlaps taskbar buttons, enable **Reserve space before the
-   Start button**. If Widgets/weather occupies the same area, increase **Left
-   offset** or disable the conflicting element.
-4. On a multi-monitor system, choose **Taskbar monitor**. Monitor 1 is always
-   the primary display.
+1. Install and enable the mod. CPU, GPU, RAM and VRAM usually work without
+   additional software. See [Install](#install) for the current source.
+2. Leave **Temperature source** on **Automatic**. If a temperature stays at
+   `--°C`, check [Setting up HWiNFO temperatures](#setting-up-hwinfo-temperatures).
+3. Press **Ctrl+Alt+M**, drag the widget along the taskbar, then press **Enter**.
+   You can drag onto another monitor's taskbar too. **Esc** keeps the old position.
+4. If you want space before Start, enable **Reserve space before the Start button**.
+   The mod only shifts the button group when the measured controls still fit.
+5. Set **Taskbar monitor** and **Left offset** if you prefer to use settings.
+   Monitor 1 is the primary display. Changing the monitor setting overrides the
+   display selected by dragging.
 
-The mod is read-only. It does not control clocks, fans or power limits, does not
-collect network/disk activity, and does not send telemetry or make internet
-requests.
+## Screenshots
 
-## Metrics
+These use the same XAML widget and native move renderer as the mod. The larger
+text example shows 100% and 100°C at font size 13 and 200% display scale.
 
-- CPU utilization from the Windows Processor Utility counter, matching the
-  frequency-aware value used by Task Manager when available. Windows system
-  time counters remain the compatibility fallback.
-- RAM usage and capacity from Windows memory status.
-- GPU utilization and dedicated or shared GPU-memory usage from Windows PDH
-  counters.
-- GPU-memory capacity and adapter identity from live D3DKMT enumeration, with
-  DXGI as a compatibility fallback. Automatic mode uses shared GPU memory for
-  integrated adapters, including common small dedicated carve-outs, and
-  dedicated VRAM for discrete adapters. The memory type can also be forced.
-- CPU and GPU temperatures from HWiNFO when available.
-- GPU fallback from the Windows display-driver interface (D3DKMT).
-- CPU fallback from Windows ACPI thermal zones exposed through PDH.
+| Light theme | Compact width, 330 logical pixels |
+| --- | --- |
+| ![Light theme](https://raw.githubusercontent.com/starychenko/windhawk-taskbar-system-info/main/assets/widget-light.png) | ![Compact widget](https://raw.githubusercontent.com/starychenko/windhawk-taskbar-system-info/main/assets/widget-compact.png) |
 
-Metric collection runs on a worker thread. CPU and GPU performance counters
-use separate queries, so GPU recovery does not reset the CPU thermal-zone
-counter. The UI consumes completed snapshots; new samples and Windows
-theme/display-change notifications trigger updates. A fallback UI timer follows
-the configured update interval.
+| Moving the live widget | No readable space at the chosen position |
+| --- | --- |
+| ![Live readings during dragging](https://raw.githubusercontent.com/starychenko/windhawk-taskbar-system-info/main/assets/widget-move.png) | ![Red frame for an invalid position](https://raw.githubusercontent.com/starychenko/windhawk-taskbar-system-info/main/assets/widget-move-invalid.png) |
 
-Native GPU-temperature failures are isolated from adapter selection and the
-GPU/VRAM counters. Unsupported queries and missing/invalid temperature readings
-are retried once per minute; other failures back off from 5 to 60 seconds.
-The next probe uses a fresh temperature handle, so recovery also works when a
-driver replacement keeps the same adapter LUID. A new LUID or a settings reload
-clears the temperature retry delay. Unavailable readings remain `--°C`; an old
-temperature is not displayed as a current measurement.
+| Larger text at 200% scale | Windows high-contrast colors |
+| --- | --- |
+| ![Large text at 200 percent scale](https://raw.githubusercontent.com/starychenko/windhawk-taskbar-system-info/main/assets/widget-large-text.png) | ![High-contrast move frame](https://raw.githubusercontent.com/starychenko/windhawk-taskbar-system-info/main/assets/widget-high-contrast.png) |
 
-Graphs use measurement timestamps and a fixed 0-100% scale. A missing sample
-or collection stall leaves a gap instead of erasing earlier history or drawing
-a line through unknown data. The collector uses deadlines rather than adding
-its own collection time to every interval. Its bounded queue retains the latest
-256 samples if the UI is temporarily busy.
+Unavailable readings stay visible as `--`. A graph leaves a gap when there is
+no valid sample.
 
-A changed adapter LUID rebuilds the GPU query during the normal adapter
-refresh (up to 60 seconds). Three consecutive hard PDH errors can also trigger
-recovery, with a 60-second cooldown. If GPU-memory readings disappear while the
-LUID stays unchanged, an independent memory query checks whether the old query
-is stale. Only a working fresh reading triggers a rebuild; an unavailable or
-parked GPU is not repeatedly reset. Fresh probes run at most once per minute.
-CPU and RAM remain visible while a new GPU query establishes its rate baseline.
-When both engine and memory readings are missing, GPU shows `--%`, not a
-made-up zero. A working memory reading with no engine instances can show idle
-0%. This is recovery from recognized counter failures, not a guarantee that
-every driver fault can be repaired without reloading the mod.
+![Unavailable readings](https://raw.githubusercontent.com/starychenko/windhawk-taskbar-system-info/main/assets/widget-unavailable.png)
 
-The adapter with the most dedicated VRAM is selected automatically. A partial
-adapter-name filter is available for multi-GPU systems. GPU usage and VRAM are
-matched to the selected live adapter by LUID. Duplicate stale adapters without
-a driver name are ignored when a named adapter with the same capacity exists.
-For an integrated GPU, the displayed capacity is the Windows shared-memory
-limit rather than a physically reserved memory pool, so its percentage has
-different semantics from a discrete GPU's dedicated VRAM. Small and fractional
-capacity totals retain one decimal place.
+## Moving and saved positions
+
+Press **Ctrl+Alt+M** to enter move mode. Grab the widget with the hand cursor and
+drag it where you need it. The readings and graphs keep updating while you move.
+The original widget is hidden during editing and returns when you cancel.
+The normal widget has no glass background. Glass appears only while you hold the
+mouse button and drag. After release, the background clears and a thin outline
+marks the pending position until Enter or Esc. Hover alone does not add glass.
+
+The frame snaps to the nearest place that can fit a readable widget. If there
+is no usable place, it turns red. Releasing the mouse keeps the preview there,
+so you can check the position before saving it.
+
+| Key | What it does |
+| --- | --- |
+| **Enter** | Checks the current taskbar layout again and saves a valid position. A red position cannot be applied. |
+| **Esc** | Cancels editing and keeps the previous position. |
+| **Home** | Prepares a return to **Taskbar monitor** and **Left offset**. Press Enter to confirm or Esc to cancel. |
+
+Clicking another application, changing settings, changing the display setup or
+unloading the mod also cancels editing. The widget and reserved button space
+move only after confirmation. A failed move or storage write keeps the previous
+saved position.
+
+You can change **Move widget hotkey**. It accepts Ctrl, Alt, Shift or Win with
+one letter, digit or F1-F24. Leave it empty to disable the shortcut. An invalid
+or already registered shortcut is not registered; the Windhawk log gives the
+reason.
+
+Positions are saved separately for each display in Windhawk's local mod storage.
+The display is identified by its device path, so its Windows display number can
+change without replacing the saved target. The horizontal position is stored
+as a fraction of the available travel width.
+
+Before the first confirmed drag, **Taskbar monitor** and **Left offset** choose
+the target. Changing **Taskbar monitor** restores the display choice from settings.
+Changing **Left offset** clears the dragged position for the current display.
+Other settings keep the saved positions. **Home**, then **Enter**, clears all
+positions saved by dragging and returns control to the monitor/offset settings.
+
+If the selected display disconnects, the widget temporarily uses the primary
+taskbar. Its saved profile stays intact. When the display returns, the widget
+returns to it too.
+
+## Placement and spacing
+
+Placement uses the visible hit areas of Start, Search, Task View, Widgets/weather,
+app buttons, overflow, the tray and clock. An empty or stretched background
+container does not count as occupied space. Other bounded XAML buttons can also
+be included in the map.
+
+The widget keeps at least six logical pixels clear of mapped controls and the
+taskbar edges. It also has six logical pixels of inner side padding. These gaps
+scale with the display, so the widget does not sit against the next button.
+
+The nearest place for the full width is preferred. If there is no full-width
+place, the widget can shrink, keeping at least 85% scale and main text of at
+least 9 logical pixels. If that still cannot fit, it hides. When space returns,
+it restores the preferred position and full width. Automatic movement or shrinking
+does not overwrite the position you chose.
+
+**Reserve space before the Start button** adds a placement option before the
+Start/app group. Existing margins are kept. If the arranged buttons would
+collide with another mapped element, the reservation is undone and the mod uses
+a free gap. **Reserved space gap** defaults to 8 logical pixels, with an effective
+minimum of 6. The mod does not reorder individual app buttons.
+
+Left and centered taskbar alignment use the same placement map. Separately drawn
+items or windows from another taskbar mod may need manual positioning or a
+compatibility fix. A particular Taskbar Styler preset still needs a live check.
+
+## Metrics and alerts
+
+- CPU usage comes from Windows Processor Utility when available, with
+  `GetSystemTimes` as the fallback.
+- GPU usage and memory usage come from Windows performance counters. Adapter
+  identity and memory capacity come from D3DKMT, with DXGI as the fallback.
+- RAM usage and capacity come from Windows memory status.
+- Temperatures come from HWiNFO or the Windows/driver interfaces listed below.
+
+CPU and GPU graphs use a fixed 0-100% scale. History defaults to 60 seconds and
+can be set from 15 to 180 seconds. Readings default to a one-second interval;
+the supported range is 1-10 seconds. Missing samples leave gaps instead of
+joining unknown readings. Memory capacities use GiB, shown as `G` in the widget.
+Small or fractional totals keep one decimal place.
+
+| Reading | Warning | Critical |
+| --- | ---: | ---: |
+| CPU temperature | 75°C | 85°C |
+| GPU temperature | 80°C | 90°C |
+| RAM and VRAM | 80% | 90% |
+
+A small release margin stops alerts flickering around a threshold. CPU and GPU
+usage stays in the normal text color, including short 100% spikes.
+
+The GPU with the most dedicated VRAM is selected by default. Use **GPU adapter
+filter** for another card. Usage, memory and native GPU temperature are matched
+to the selected live adapter.
+
+**GPU memory type** normally stays on **Automatic**. Integrated GPUs use the
+Windows shared-memory limit; discrete GPUs use dedicated VRAM. Shared memory is
+backed by system RAM and is not a fixed VRAM chip capacity. If a driver or an
+older low-memory card is detected incorrectly, set the memory type explicitly.
+
+The mod reads system information. It does not control clocks, fans, power limits
+or GPU settings. It does not collect network/disk activity, send telemetry or
+make internet requests.
 
 ## Temperature providers
 
-The **Temperature source** setting provides these modes:
+**Automatic** fills CPU and GPU temperatures separately. It tries HWiNFO Shared
+Memory, then HWiNFO Gadget Registry, then the Windows fallback for any temperature
+that is still missing.
 
-- **Automatic** fills CPU and GPU independently: HWiNFO shared memory first,
-  then HWiNFO Gadget Registry, then Windows D3DKMT for a still-missing GPU
-  reading and Windows thermal zones for a still-missing CPU reading.
-- **HWiNFO automatic** uses only the two HWiNFO interfaces.
-- **HWiNFO Shared Memory** uses only `Global\\HWiNFO_SENS_SM2`.
-- **HWiNFO Gadget Registry** uses only
-  `HKCU\\Software\\HWiNFO64\\VSB`.
-- **Windows native** reads GPU temperature from the selected display driver via
-  D3DKMT and CPU temperature from the same
-  `\\Thermal Zone Information(*)\\Temperature` PDH source as Taskbar Clock
-  Customization. It needs no third-party monitor. ACPI platform zones don't
-  necessarily represent the CPU package sensor; the optional zone filter and
-  average/hottest setting make this fallback explicit and controllable.
-- **Disabled** skips temperature collection while keeping every other metric.
+| Temperature source | What it reads |
+| --- | --- |
+| **Automatic** | HWiNFO first, then Windows/driver readings for missing temperatures. |
+| **HWiNFO automatic** | Shared Memory, then Gadget Registry. |
+| **HWiNFO Shared Memory** | `Global\HWiNFO_SENS_SM2` only. The shared-memory interface targets HWiNFO 7.0 or newer. |
+| **HWiNFO Gadget Registry** | `HKCU\Software\HWiNFO64\VSB` only. HWiNFO and Explorer must use the same Windows user. |
+| **Windows native** | GPU temperature from the selected display driver through D3DKMT; CPU fallback from Windows ACPI thermal zones through PDH. |
+| **Disabled** | Skips temperature collection. Usage, memory and graphs keep working. |
 
-HWiNFO is optional and is not bundled with this mod. Shared-memory integration
-targets HWiNFO 7.0 or newer, which permits full disclosure of the interface.
-Temperature units are classified from HWiNFO's raw unit bytes, independently of
-the Windows ANSI code page.
-The free HWiNFO64 edition disables shared memory after 12 hours of continuous
-use; HWiNFO64 Pro has no such limit. Gadget Registry is a separate HWiNFO
-interface. Configure it under **Sensor Settings > HWiNFO Gadget** by enabling
-**Report to Gadget** for the desired CPU and GPU temperature readings. If the
-selected source is unavailable, temperatures are shown as `--°C`; all other
-  metrics continue to work. The active provider is written to the Windhawk log
-  only when it changes. When Windows adapter identity is available, automatic
-  HWiNFO GPU selection is matched to it. If adapter enumeration has never been
-  available and no adapter filter is set, HWiNFO uses its generic GPU match; on
-  multi-GPU systems, configure the adapter and sensor filters explicitly.
+Windows thermal zones can describe a motherboard, chassis, skin or
+processor-related sensor. They are not always the CPU package temperature.
+**Windows thermal zone filter** selects matching zone names. **Windows thermal
+zone aggregation** uses their average by default, or the hottest zone if selected.
+The Windows CPU fallback stays unavailable if the system exposes no thermal zones.
 
-Cached HWiNFO readings are checked against sensor/instance/reading IDs in
-Shared Memory, or exact Sensor/Label pairs in Gadget Registry. Reordered
-records trigger reselection in the same sample. Partial discovery retries
-quickly for a short window, then returns to the normal scan interval (60 seconds
-for Shared Memory, 30 seconds for Registry). Registry discovery enumerates
-actual SensorN entries, including sparse numbering. Invalid shared-memory layouts
-are rejected and logged once until a valid layout returns.
+HWiNFO is optional and is not bundled with the mod. Automatic CPU matching
+prefers `CPU (Tctl/Tdie)`, `CPU Die (average)` or `CPU Package`; GPU matching
+prefers `GPU Temperature` for the selected adapter. On a multi-GPU system, use
+the adapter and temperature filters if automatic matching picks the wrong sensor.
+If Windows has never supplied an adapter identity and no adapter filter is set,
+HWiNFO uses its generic GPU-temperature match.
 
-Short provider timeouts are shown as unavailable unless another configured
-provider can supply the reading. Old temperatures are not silently held over
-as if they were current. Registry decimals and displayed numbers are independent
-of Explorer's numeric locale.
+An unavailable reading shows `--°C`. An old temperature is not kept as a current
+reading. One missing provider does not stop the other metrics.
 
 ## Setting up HWiNFO temperatures
 
-HWiNFO is only needed when Windows cannot expose the desired temperature. Keep
-HWiNFO running; **Sensors-only** mode is sufficient.
+Use HWiNFO when Windows cannot supply the temperature you want, or when you want
+its CPU package sensor. Keep HWiNFO running. **Sensors-only** mode is enough.
 
-### HWiNFO Shared Memory
+### Shared Memory
 
 1. Open HWiNFO **Settings**.
-2. On **General / User Interface**, enable **Shared Memory Support**.
+2. Under **General / User Interface**, enable **Shared Memory Support**.
 3. Start or reopen the Sensors window.
-4. Keep this mod on **Automatic**, or select **HWiNFO Shared Memory** to use
-   only that interface.
+4. Keep the mod on **Automatic**, or select **HWiNFO Shared Memory** to use only
+   that interface.
 
-The free HWiNFO64 edition disables Shared Memory Support after 12 hours of
-continuous operation. This is an HWiNFO limitation, not a mod timer. Re-enable
-or restart it, use Gadget Registry, allow the Windows-native fallback, or use
-HWiNFO64 Pro. The mod does not bypass the limit.
+The non-Pro HWiNFO64/ARM64 edition disables Shared Memory after 12 hours of
+continuous use. Re-enable it manually, use Gadget Registry, allow the Windows
+fallback, or use Pro. This limit belongs to HWiNFO; the mod does not bypass it.
+See [HWiNFO's license comparison](https://www.hwinfo.com/licenses/).
 
-### HWiNFO Gadget Registry
+### Gadget Registry
 
-1. Open the HWiNFO Sensors window and **Sensor Settings**.
-2. Open the **HWiNFO Gadget** tab.
-3. Enable **Report to Gadget** for the required CPU and GPU temperature
-   readings.
-4. Run HWiNFO and Explorer/Windhawk as the same Windows user.
-5. Keep this mod on **Automatic**, or select **HWiNFO Gadget Registry**.
+1. Open the Sensors window and **Sensor Settings**.
+2. Open the **HWiNFO Gadget** tab and enable gadget reporting.
+3. Mark the CPU and GPU temperature readings for **Report to Gadget** reporting
+   (the sensor checkbox may be labelled **Report value in Gadget**).
+4. Run HWiNFO and Explorer under the same Windows user.
+5. Keep the mod on **Automatic**, or select **HWiNFO Gadget Registry**.
 
-If automatic selection chooses the wrong reading, enter a distinctive part of
-the HWiNFO sensor name in the CPU or GPU temperature sensor filter. Leave these
-filters empty unless a mismatch actually occurs.
+The [HWiNFO author's setup note](https://www.hwinfo.com/forum/threads/hwinfomonitor-version-confusion.9300/)
+explains the Gadget tab and the registry location. If the wrong sensor is chosen,
+set **CPU temperature sensor filter** or **GPU temperature sensor filter** to a
+distinctive part of its HWiNFO name. Otherwise, leave the filters empty.
 
 ## Settings guide
 
-- **Widget width** and **Left offset** control the block size and its distance
-  from the far-left edge of the selected taskbar, in XAML logical pixels.
-  The requested offset is limited to the available width before the system tray.
-  With Reserve space enabled, current taskbar buttons and their existing margins
-  are also preserved. The offset is reduced first; if necessary the block scales
-  down to fit, or hides when no space remains. Resizing the panel or changing
-  monitors recalculates placement and restores the requested offset when possible.
-  This applies equally to horizontal taskbars at the top and bottom; it does not
-  automatically avoid Widgets/weather or every third-party taskbar element.
-- **Taskbar monitor** selects the display. An unavailable display falls back to
-  the primary taskbar and is retried automatically.
-- **Reserve space** prevents left-aligned taskbar buttons from overlapping the
-  widget; **Reserved space gap** adds padding after it.
-- **Update interval** controls collection frequency. One second is recommended.
-  **Graph history** controls how many seconds the CPU/GPU graphs represent.
-- **Adaptive colors** is recommended for automatic light, dark and Windows
-  high-contrast support. Manual text/graph/warning/critical colors are used when
-  it is disabled.
-- Temperature and memory warning/critical values only change alert colors; they
-  do not throttle hardware or close applications.
-- **GPU adapter filter** selects a card by a partial Windows adapter name.
-  Empty selects the adapter with the most dedicated VRAM.
-- **GPU memory type** should normally stay on Automatic. Shared memory is a
-  Windows allocation limit backed by system RAM, while dedicated VRAM is the
-  physical memory of a discrete GPU.
-- **Temperature source** should normally stay on Automatic. The HWiNFO-only,
-  Windows-native and Disabled modes are intended for diagnosis or explicit
-  control.
-- Windows thermal-zone settings only affect the Windows-native CPU fallback.
-  Firmware zones may describe a motherboard, chassis or skin sensor rather than
-  the CPU package.
+### Layout and sampling
+
+| Setting | What to change |
+| --- | --- |
+| **Widget width** | Total width, including side padding. Range: 330-800 logical pixels; default: 410. Wider fonts may need more space. |
+| **Left offset** | Preferred horizontal position before dragging. Nonnegative logical pixels; default: 10. |
+| **Taskbar monitor** | Initial display, range 1-32. Monitor 1 is primary; the rest follow their position in the virtual desktop and may differ from Windows numbering. |
+| **Move widget hotkey** | Default: `Ctrl+Alt+M`. Empty disables it. |
+| **Reserve space before the Start button** | Allows the button group to shift when a safe reservation fits. Off by default. |
+| **Reserved space gap** | Gap after a reservation. Range: 0-100 logical pixels; default: 8; effective minimum: 6. |
+| **Update interval** | Collection interval, 1-10 seconds; default: 1. |
+| **Graph history** | CPU/GPU history, 15-180 seconds; default: 60. |
+
+### Appearance
+
+| Setting | What to change |
+| --- | --- |
+| **Font size** | Range: 9-13 logical pixels; default: 11. |
+| **Font family** | Default: Segoe UI Variable Text. Keep a compact font or increase the widget width. |
+| **Adapt colors to the taskbar theme** | On by default. Follows light, dark and Windows high-contrast colors. |
+| **Text color** | Manual text color when adaptive colors are off. Empty uses the system color. |
+| **Graph and bar color** | Manual color for CPU/GPU graphs and RAM/VRAM bars. |
+| **Warning color** | Manual color for warning readings. |
+| **Critical color** | Manual color for critical readings. |
+| **Text opacity** | Default: 96%. Labels are slightly dimmer; high contrast keeps important content fully visible. |
+
+### Alerts and sensors
+
+| Setting | What to change |
+| --- | --- |
+| **CPU temperature warning** | Default: 75°C. |
+| **CPU critical temperature** | Default: 85°C. |
+| **GPU temperature warning** | Default: 80°C. |
+| **GPU critical temperature** | Default: 90°C. |
+| **Memory usage warning** | RAM/VRAM warning; default: 80%. |
+| **Critical memory usage** | RAM/VRAM critical level; default: 90%. |
+| **GPU adapter filter** | Partial Windows adapter name. Empty selects the GPU with the most dedicated VRAM. |
+| **GPU memory type** | Automatic, Dedicated VRAM or Shared GPU memory. |
+| **Temperature source** | The provider modes listed above; default: Automatic. |
+| **Windows thermal zone filter** | Partial zone name for the Windows CPU fallback. |
+| **Windows thermal zone aggregation** | Average or Hottest; default: Average. |
+| **CPU temperature sensor filter** | Partial HWiNFO CPU sensor name. |
+| **GPU temperature sensor filter** | Partial HWiNFO GPU sensor name. |
+
+Manual text, graph and alert colors apply when adaptive colors are off. A critical
+threshold is kept above its warning threshold. Alerts only change the display.
 
 ## Troubleshooting
 
-- **Temperature is `--°C`:** configure HWiNFO Shared Memory or Gadget Registry,
-  verify that HWiNFO is running, and keep Automatic mode enabled.
-- **HWiNFO stopped after about 12 hours:** the free Shared Memory period ended.
-  Re-enable it, use Gadget Registry/Windows-native fallback, or use HWiNFO Pro.
-- **Wrong GPU temperature:** set the GPU adapter filter, then the HWiNFO GPU
-  sensor filter only if necessary.
-- **VRAM is `--` after a driver update:** allow up to one minute for adapter
-  refresh or the independent counter probe, plus a few samples for priming.
-  Inspect the Windhawk log if it stays unavailable; reloading the mod is the
-  fallback when Windows still cannot provide valid readings.
-- **Integrated-GPU memory looks too large:** Automatic mode shows the Windows
-  shared-memory limit. Force Dedicated only to display the reserved carve-out.
-- **A legacy 512 MB discrete GPU is shown as shared:** force Dedicated VRAM.
-  The automatic memory-shape signal cannot always distinguish it from an
-  integrated carve-out.
-- **Widget is missing, misplaced or overlapping:** verify monitor, width and
-  offset; reserve taskbar space or disable another element using the far-left
-  area.
+| What you see | What to check |
+| --- | --- |
+| Temperature stays at `--°C` | Windows may not expose that sensor. Configure HWiNFO and confirm it is running. Leave Automatic mode on. |
+| HWiNFO stops after about 12 hours | Re-enable Shared Memory, use Gadget Registry or let Automatic use Windows readings. |
+| GPU temperature belongs to another card | Set GPU adapter filter, then GPU temperature sensor filter if needed. |
+| GPU or VRAM stays at `--` after a driver update | Allow up to one minute for adapter refresh or a fresh-counter probe, plus a few samples to establish a baseline. Check the Windhawk log; reload the mod if Windows still supplies no valid readings. |
+| Integrated-GPU memory looks too large | Automatic shows the Windows shared-memory limit. Select Dedicated VRAM only if you want the reserved carve-out. |
+| An old 512 MB discrete card is shown as shared | Set GPU memory type to Dedicated VRAM. Automatic detection can mistake an old low-memory card for an integrated GPU. |
+| The widget is hidden | The available gap must fit the readability limits and side clearance. Check width, font and the Windhawk log. Try another position or Reserve space. |
+| The widget is on the wrong display | Check Taskbar monitor or drag it to the required taskbar. Home, then Enter, clears positions saved by dragging. |
+| The hotkey does nothing | Check Move widget hotkey and the log. Choose another combination if it is invalid or already registered. |
+| The move frame turns red | The target has no ready taskbar or no readable space. Move to a usable area before pressing Enter. |
+| Another taskbar mod overlaps it | Only discoverable XAML bounds are mapped. Custom drawing or separate windows may need a different position or a compatibility fix. |
 
-The Windhawk log records provider changes, adapter selection, counter recovery
-and HWiNFO sensor mismatches without logging every sample.
+The Windhawk log records provider changes, adapter selection, counter recovery,
+placement errors and sensor mismatches. It does not print every sample.
 
-## Compatibility and placement
+## Compatibility
 
-- Windows 11 64-bit. The widget can be placed on the primary or a secondary
-  taskbar. x64 is hardware-tested; ARM64 is compilation-tested.
-- Monitor 1 is always the primary display. Other monitors are ordered by their
-  position in the virtual desktop and can differ from the numbers in Windows
-  Display Settings. An unavailable or disconnected selection falls back to the
-  primary taskbar automatically and moves back when the selected display returns.
-- Display-change notifications re-evaluate monitor ordering even when the number
-  of displays and their taskbar windows stay unchanged.
-- On a taskbar shorter than the normal 38-DIP widget, the whole block scales down
-  uniformly to fit. Normal-height taskbars keep the configured size. Very wide
-  fonts can still require a wider widget; text is trimmed instead of overlapping.
-- Centered taskbar icons are recommended.
-- The widget uses the far-left taskbar area. Windows Widgets/weather or another
-  left-side taskbar extension can occupy the same space; adjust the offset or
-  disable the conflicting element if they overlap.
-- Enable **Reserve space before the Start button** if the widget overlaps
-  left-aligned taskbar buttons.
-- The widget is native XAML inside the taskbar and can coexist with Taskbar
-  Styler.
+The current source is **1.6.0**, built with Windhawk **1.7.3** for Windows 11.
+The widget targets horizontal primary and secondary taskbars. x64 and ARM64
+builds pass; ARM64 hardware has not been checked.
+
+Placement and editing pass isolated XAML/Win32 tests. Live Explorer checks for
+this version are still pending, including top/bottom taskbars, physical moves
+between monitors with different DPI, unplug/reconnect, restart persistence and
+Taskbar Styler presets. Test renders do not prove those configurations.
+
+The normal widget uses native taskbar XAML. Move mode uses a temporary Win32
+window. It does not use XAML Diagnostics. Display changes recheck the target even
+when the number of monitors stays the same. Very wide fonts can still be trimmed;
+increase the widget width if needed.
+
+## Install
+
+Search for **Taskbar System Info** in Windhawk and select **Install**.
+To use this repository's source directly:
+
+1. Open Windhawk and select **Create a new mod**.
+2. Replace the generated source with [taskbar-system-info.wh.cpp](https://github.com/starychenko/windhawk-taskbar-system-info/blob/main/taskbar-system-info.wh.cpp).
+3. Select **Compile Mod** and enable it.
 
 ## Credits and license
 
-Taskbar discovery and window-thread marshaling follow techniques from
+Taskbar discovery and thread dispatch follow
 [Multirow taskbar for Windows 11](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-multirow.wh.cpp)
 by Michael Maltsev (`m417z`). Native GPU temperature collection follows his
 [Taskbar Clock Customization implementation](https://github.com/m417z/my-windhawk-mods/commit/861920df6380f4c13abec5d9226362c4725e8362).
 Secondary-taskbar discovery is adapted from
 [Taskbar Fluent Media Player](https://github.com/Salyts/Taskbar-Fluent-Media-Player)
 by Salyts.
-Released under GPL-3.0.
+
+Released under [GPL-3.0](https://github.com/starychenko/windhawk-taskbar-system-info/blob/main/LICENSE).
 */
 // ==/WindhawkModReadme==
 
@@ -338,26 +401,32 @@ Released under GPL-3.0.
 - leftOffset: 10
   $name: Left offset
   $name:uk-UA: Відступ зліва
-  $description: "Requested distance from the left taskbar edge in logical pixels. Nonnegative; automatically limited to the available taskbar space. Restored when more space becomes available."
-  $description:uk-UA: "Бажаний відступ від лівого краю в логічних пікселях. Невідємний; автоматично обмежується доступним місцем на панелі та відновлюється, коли місця стає більше."
+  $description: "Initial preferred distance from the left taskbar edge in logical pixels. Nonnegative; the nearest readable gap is selected automatically. Changing this setting clears the current display's dragged position."
+  $description:uk-UA: "Початковий бажаний відступ зліва в логічних пікселях. Невідємний; автоматично вибирається найближче місце для читабельного блока. Зміна скидає позицію перетягування поточного дисплея."
 
 - monitor: 1
   $name: Taskbar monitor
   $name:uk-UA: Монітор панелі завдань
-  $description: "Allowed range: 1-32. Monitor 1 is the primary display. Other monitors are ordered by their position in the virtual desktop and can differ from Windows Display Settings. An unavailable selection falls back to the primary taskbar."
-  $description:uk-UA: "Діапазон: 1-32. Монітор 1 - основний. Інші впорядковані за розташуванням у віртуальному робочому столі, тому номери можуть відрізнятися від параметрів дисплея Windows. Якщо вибраний монітор недоступний, використовується основна панель."
+  $description: "Initial target, range 1-32; 1 is primary. Others follow virtual desktop order, which can differ from Windows numbering. Dragging overrides this target; changing this setting restores manual selection. Missing displays temporarily use the primary taskbar."
+  $description:uk-UA: "Початковий монітор, діапазон 1-32; 1 - основний. Інші йдуть за розташуванням у віртуальному робочому столі, номери можуть відрізнятися від Windows. Перетягування змінює ціль; зміна налаштування повертає ручний вибір. Недоступний дисплей тимчасово замінює основна панель."
+
+- moveHotkey: "Ctrl+Alt+M"
+  $name: Move widget hotkey
+  $name:uk-UA: Клавіша переміщення віджета
+  $description: "Move the live widget with a hand cursor; red indicates no space. Drag between taskbars, Enter to save, Esc to cancel, Home to reset. Ctrl/Alt/Shift/Win plus A-Z, 0-9 or F1-F24; empty disables it."
+  $description:uk-UA: "Переміщення живого віджета з курсором руки; червоне підсвічування означає брак місця. Перетягуйте між панелями; Enter зберігає, Esc скасовує, Home готує скидання. Ctrl/Alt/Shift/Win та A-Z, 0-9 або F1-F24; порожнє значення вимикає."
 
 - reserveSpace: false
   $name: Reserve space before the Start button
   $name:uk-UA: Резервувати місце перед кнопкою Пуск
-  $description: "Adds room before the Start button so left-aligned taskbar buttons don't overlap the widget. Usually unnecessary with centered buttons."
-  $description:uk-UA: "Додає місце перед кнопкою Пуск, щоб вирівняні ліворуч кнопки не перекривали блок. Для центрованих значків зазвичай не потрібно."
+  $description: "Allows placement before Start by shifting the button group only if mapped controls still fit. Existing margins are preserved. If arranged controls collide, reservation is rolled back and a free gap is used."
+  $description:uk-UA: "Дозволяє місце перед Пуском зі зміщенням групи кнопок, якщо враховані елементи вміщаються. Зовнішні відступи зберігаються. За перетину після layout резервування скасовується та вибирається вільне місце."
 
 - reserveGap: 8
   $name: Reserved space gap
   $name:uk-UA: Проміжок після блока
-  $description: "Additional gap after the reserved widget area, from 0 to 100 pixels."
-  $description:uk-UA: "Додатковий проміжок після зарезервованої області, від 0 до 100 пікселів."
+  $description: "Gap after the reserved widget area, from 0 to 100 logical pixels. The effective minimum is 6 logical pixels."
+  $description:uk-UA: "Проміжок після зарезервованої області, від 0 до 100 логічних пікселів. Фактичний мінімум - 6 логічних пікселів."
 
 - updateInterval: 1
   $name: Update interval
@@ -534,6 +603,8 @@ Released under GPL-3.0.
 #include <pdhmsg.h>
 #include <windows.h>
 #include <commctrl.h>
+#include <objidl.h>
+#include <gdiplus.h>
 
 #include <algorithm>
 #include <atomic>
@@ -564,6 +635,7 @@ Released under GPL-3.0.
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.UI.Text.h>
 #include <winrt/Windows.UI.Xaml.Controls.h>
+#include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
 #include <winrt/Windows.UI.Xaml.Shapes.h>
 #include <winrt/Windows.UI.Xaml.h>
@@ -584,10 +656,12 @@ constexpr double kWidgetHeight = 38.0;
 constexpr double kRowHeight = 18.0;
 constexpr double kRowGap = 2.0;
 constexpr double kColumnGap = 14.0;
-constexpr double kMetricLabelWidth = 31.0;
-constexpr double kMetricUsageWidth = 42.0;
-constexpr double kMetricTempWidth = 48.0;
-constexpr double kGraphLeftGap = 8.0;
+constexpr double kWidgetSidePadding = 6.0;
+constexpr double kTaskbarClearance = 6.0;
+constexpr double kMetricLabelWidth = 28.0;
+constexpr double kMetricUsageWidth = 34.0;
+constexpr double kMetricTempWidth = 40.0;
+constexpr double kGraphLeftGap = 6.0;
 constexpr double kMemoryLabelWidth = 43.0;
 constexpr double kMemoryPercentWidth = 38.0;
 constexpr double kGraphHeight = 12.0;
@@ -633,6 +707,7 @@ enum class TemperatureProvider {
 };
 
 struct ModSettings {
+    std::wstring moveHotkey = L"Ctrl+Alt+M";
     std::wstring fontFamily;
     std::wstring textColor;
     std::wstring graphColor;
@@ -692,6 +767,22 @@ event_token g_rootLayoutUpdatedToken{};
 [[clang::no_destroy]] FrameworkElement g_taskItemsRepeater{nullptr};
 [[clang::no_destroy]] FrameworkElement g_systemTrayFrame{nullptr};
 bool g_applyingTaskbarPlacement = false;
+HWND g_placementControlWindow = nullptr;
+bool g_geometryQueued = false;
+bool g_reservationRejected = false;
+bool g_rejectionNeedsBaseline = false;
+double g_previousPlacementLeft = 0.0;
+uint64_t g_layoutRevision = 0;
+uint64_t g_reservationRevision = 0;
+bool g_reservationAwaitingLayout = false;
+void QueueTaskbarPlacement();
+void EnsurePlacementControl(const ModSettings& settings);
+void RemovePlacementControl();
+void CancelMoveEditor();
+void InvalidateMonitorKeys();
+std::wstring MonitorKey(HWND window);
+std::optional<HWND> DraggedTaskbarWindow();
+double PreferredTaskbarLeft(HWND window, double width, const ModSettings& settings);
 double g_reservedMargin = 0.0;
 std::optional<double> g_lastAppliedRepeaterMarginLeft;
 double g_graphWidth = 96.0;
@@ -866,6 +957,7 @@ GpuMemoryMode ParseGpuMemoryMode(const std::wstring& value) {
 
 void LoadSettings() {
     ModSettings settings;
+    settings.moveHotkey = GetStringSetting(L"moveHotkey");
     settings.fontFamily = GetStringSetting(L"fontFamily");
     settings.textColor = GetStringSetting(L"textColor");
     settings.graphColor = GetStringSetting(L"graphColor");
@@ -3860,29 +3952,34 @@ double WidgetHeightForTaskbar(double availableHeight) {
                : kWidgetHeight;
 }
 
+struct WidgetColumnWidths { double left, right, graph; };
+WidgetColumnWidths ResolveWidgetColumns(double width) {
+    width -= 2 * kWidgetSidePadding;
+    double right = std::clamp(width * 0.38, 145.0, 170.0);
+    double left = width - kColumnGap - right;
+    return {left, right, std::max(24.0, left - kMetricLabelWidth - kMetricUsageWidth -
+                                      kMetricTempWidth - kGraphLeftGap)};
+}
 void ApplyWidgetGeometry(const ModSettings& settings) {
     if (!g_widget) {
         return;
     }
 
-    double rightWidth =
-        std::clamp(static_cast<double>(settings.width) * 0.38, 145.0, 170.0);
-    double leftWidth = settings.width - kColumnGap - rightWidth;
-    g_graphWidth = std::max(
-        24.0, leftWidth - kMetricLabelWidth - kMetricUsageWidth -
-                  kMetricTempWidth - kGraphLeftGap);
-    g_memoryBarWidth = rightWidth;
+    auto columns = ResolveWidgetColumns(settings.width);
+    g_graphWidth = columns.graph;
+    g_memoryBarWidth = columns.right;
 
     g_widget.Width(settings.width);
     g_widget.Height(kWidgetHeight);
+    g_widget.Padding(Thickness{kWidgetSidePadding, 0, kWidgetSidePadding, 0});
     if (g_leftColumn) {
-        g_leftColumn.Width(GridLength{leftWidth, GridUnitType::Pixel});
+        g_leftColumn.Width(GridLength{columns.left, GridUnitType::Pixel});
     }
     if (g_gapColumn) {
         g_gapColumn.Width(GridLength{kColumnGap, GridUnitType::Pixel});
     }
     if (g_rightColumn) {
-        g_rightColumn.Width(GridLength{rightWidth, GridUnitType::Pixel});
+        g_rightColumn.Width(GridLength{columns.right, GridUnitType::Pixel});
     }
     for (XamlPath graph : {g_cpuGraph, g_gpuGraph}) {
         if (graph) {
@@ -3897,139 +3994,356 @@ void ApplyWidgetGeometry(const ModSettings& settings) {
     }
 }
 
+// Geometry is a value snapshot: no XAML references cross a taskbar thread.
+struct OccupiedInterval {
+    double left = 0.0;
+    double right = 0.0;
+    bool movable = false;
+};
+struct TaskbarGeometry {
+    double width = 0.0;
+    double height = 0.0;
+    std::vector<OccupiedInterval> occupied;
+    bool ready = false;
+};
+struct PreferredPosition {
+    double left = 0.0;
+    double previousLeft = 0.0;
+};
 struct TaskbarPlacement {
     double left = 0.0;
     double width = 0.0;
     double reserved = 0.0;
 };
+constexpr double kPlacementTolerance = 0.25;
 
-// Inputs and results are all XAML logical pixels on the selected taskbar.
-// Never rewrite the requested settings: a temporary clamp must be reversible.
-TaskbarPlacement ResolveTaskbarPlacement(const ModSettings& settings,
-                                        double availableWidth,
-                                        double buttonsWidth = 0.0,
-                                        double baseLeft = 0.0,
-                                        double baseRight = 0.0) {
-    if (!std::isfinite(availableWidth) || availableWidth <= 0.0) {
-        // Wait for the first measured layout before applying a large margin.
-        return {0.0, static_cast<double>(settings.width), 0.0};
-    }
-    auto positive = [](double value) {
-        return std::isfinite(value) ? std::max(0.0, value) : 0.0;
-    };
-    double budget = availableWidth;
-    if (settings.reserveSpace) {
-        budget = std::max(0.0, budget - positive(buttonsWidth) -
-                                   positive(baseLeft) - positive(baseRight));
-    }
-    double width = std::min(static_cast<double>(settings.width), budget);
-    double gap = settings.reserveSpace
-                     ? std::min(positive(settings.reserveGap), budget - width)
-                     : 0.0;
-    double left = std::clamp(static_cast<double>(settings.leftOffset), 0.0,
-                             std::max(0.0, budget - width - gap));
-    return {left, width,
-            settings.reserveSpace && width > 0.0 ? left + width + gap : 0.0};
+bool Intersects(double left, double right, const OccupiedInterval& item) {
+    return left < item.right - kPlacementTolerance &&
+           right > item.left + kPlacementTolerance;
 }
-
-double TaskbarAvailableWidth() {
-    double width = g_rootGrid ? g_rootGrid.ActualWidth() : 0.0;
-    if (!g_systemTrayFrame || g_systemTrayFrame.ActualWidth() <= 0.0) {
-        return width;
+std::vector<OccupiedInterval> FreeTaskbarIntervals(
+    double width, std::vector<OccupiedInterval> occupied) {
+    std::vector<OccupiedInterval> free;
+    std::erase_if(occupied, [](const auto& item) {
+        return !std::isfinite(item.left) || !std::isfinite(item.right) ||
+               item.right <= item.left;
+    });
+    std::sort(occupied.begin(), occupied.end(), [](const auto& a, const auto& b) {
+        return a.left < b.left;
+    });
+    double end = 0.0;
+    for (const auto& item : occupied) {
+        double left = std::clamp(item.left, 0.0, width);
+        double right = std::clamp(item.right, 0.0, width);
+        if (left > end) free.push_back({end, left});
+        end = std::max(end, right);
     }
-    try {
-        // Use the tray's actual position, including any margins set by a styler.
-        auto point = g_systemTrayFrame.TransformToVisual(g_rootGrid)
-                         .TransformPoint({0.0f, 0.0f});
-        if (std::isfinite(point.X)) {
-            return std::clamp(static_cast<double>(point.X), 0.0, width);
+    if (end < width) free.push_back({end, width});
+    return free;
+}
+std::vector<OccupiedInterval> FreeWidgetIntervals(
+    double width, std::vector<OccupiedInterval> occupied) {
+    for (auto& item : occupied) {
+        item.left -= kTaskbarClearance; item.right += kTaskbarClearance;
+    }
+    auto free = FreeTaskbarIntervals(width, std::move(occupied));
+    for (auto& slot : free) {
+        slot.left = std::max(slot.left, kTaskbarClearance);
+        slot.right = std::min(slot.right, width - kTaskbarClearance);
+    }
+    std::erase_if(free, [](const auto& slot) { return slot.right <= slot.left; });
+    return free;
+}
+bool PlacementFits(const TaskbarGeometry& geometry,
+                   const TaskbarPlacement& placement) {
+    if (!std::isfinite(placement.width) || !std::isfinite(placement.left) ||
+        placement.width <= 0 || placement.left < kTaskbarClearance - kPlacementTolerance ||
+        placement.left + placement.width > geometry.width - kTaskbarClearance + kPlacementTolerance)
+        return false;
+    for (const auto& item : geometry.occupied) {
+        OccupiedInterval shifted = item;
+        if (item.movable) {
+            shifted.left += placement.reserved;
+            shifted.right += placement.reserved;
+            if (placement.reserved > 0 && shifted.right > geometry.width + kPlacementTolerance) return false;
+            for (const auto& fixed : geometry.occupied)
+                if (placement.reserved > 0 && !fixed.movable && Intersects(shifted.left, shifted.right, fixed))
+                    return false;
         }
-    } catch (...) {
-        // Some taskbar customizations expose the tray in a separate visual tree.
+        shifted.left -= kTaskbarClearance; shifted.right += kTaskbarClearance;
+        if (Intersects(placement.left, placement.left + placement.width, shifted))
+            return false;
     }
-    return std::max(0.0, width - g_systemTrayFrame.ActualWidth());
+    return true;
 }
+bool ReservedControlsFit(const TaskbarGeometry& arranged) {
+    for (const auto& button : arranged.occupied) {
+        if (!button.movable) continue;
+        if (button.left < -kPlacementTolerance || button.right > arranged.width + kPlacementTolerance) return false;
+        for (const auto& fixed : arranged.occupied)
+            if (!fixed.movable && Intersects(button.left, button.right, fixed)) return false;
+    }
+    return true;
+}
+
+TaskbarPlacement ResolveTaskbarPlacement(const ModSettings& settings,
+                                        const TaskbarGeometry& geometry,
+                                        PreferredPosition preferred,
+                                        bool allowReservation = true) {
+    if (!geometry.ready || !std::isfinite(geometry.width) || geometry.width <= 0)
+        return {};
+    double minimumScale = std::max(0.85, 9.0 / settings.fontSize);
+    if (geometry.height > 0 && geometry.height / kWidgetHeight < minimumScale)
+        return {};
+    double minimumWidth = settings.width * minimumScale;
+    double reservationGap = std::max<double>(kTaskbarClearance, settings.reserveGap);
+    std::vector<OccupiedInterval> fixed;
+    double firstButton = geometry.width;
+    double maximumShift = geometry.width;
+    bool hasButtons = false;
+    for (const auto& item : geometry.occupied) {
+        if (!item.movable) fixed.push_back(item);
+        else {
+            hasButtons = true;
+            firstButton = std::min(firstButton, item.left);
+            maximumShift = std::min(maximumShift, geometry.width - item.right);
+            for (const auto& obstacle : geometry.occupied)
+                if (!obstacle.movable && obstacle.left >= item.right - kPlacementTolerance)
+                    maximumShift = std::min(maximumShift, obstacle.left - item.right);
+        }
+    }
+    // Full size wins over a nearer but smaller slot. Equal-distance choices stay
+    // near the preceding placement; reservation is used only when it helps.
+    for (bool shrink : {false, true}) {
+        TaskbarPlacement best{};
+        double bestDistance = HUGE_VAL, bestPrevious = HUGE_VAL;
+        auto consider = [&](OccupiedInterval slot, bool reserve) {
+            double width = shrink ? std::min<double>(settings.width, slot.right - slot.left)
+                                  : settings.width;
+            if (width + kPlacementTolerance < minimumWidth ||
+                slot.right - slot.left + kPlacementTolerance < width) return;
+            double left = std::clamp(preferred.left, slot.left,
+                                     std::max(slot.left, slot.right - width));
+            double shift = reserve ? std::max(0.0, left + width + reservationGap - firstButton)
+                                   : 0.0;
+            TaskbarPlacement candidate{left, width, shift};
+            if (!PlacementFits(geometry, candidate)) return;
+            double distance = std::abs(left - preferred.left);
+            double previous = std::abs(left - preferred.previousLeft);
+            if (distance < bestDistance - kPlacementTolerance ||
+                (std::abs(distance - bestDistance) <= kPlacementTolerance &&
+                 (previous < bestPrevious - kPlacementTolerance ||
+                  (std::abs(previous - bestPrevious) <= kPlacementTolerance &&
+                   candidate.reserved < best.reserved)))) {
+                best = candidate; bestDistance = distance; bestPrevious = previous;
+            }
+        };
+        for (auto slot : FreeWidgetIntervals(geometry.width, geometry.occupied))
+            consider(slot, false);
+        if (settings.reserveSpace && allowReservation && hasButtons && maximumShift > 0) {
+            for (auto slot : FreeWidgetIntervals(geometry.width, fixed)) {
+                slot.right = std::min(slot.right, firstButton + maximumShift - reservationGap);
+                if (slot.right > slot.left) consider(slot, true);
+            }
+        }
+        if (best.width > 0) return best;
+    }
+    return {};
+}
+
+bool IsTaskbarObstacle(FrameworkElement element) {
+    auto name = element.Name();
+    auto type = winrt::get_class_name(element);
+    return name == L"SystemTrayFrame" || type == L"SystemTray.SystemTrayFrame" ||
+           type == L"Taskbar.StartButton" || type == L"Taskbar.SearchBoxButton" ||
+           type == L"Taskbar.SearchBoxLaunchListButton" || type == L"Taskbar.TaskViewButton" ||
+           type == L"Taskbar.TaskListButton" || type == L"Taskbar.ExperienceToggleButton" ||
+           type == L"Taskbar.OverflowToggleButton" || type == L"Taskbar.AugmentedEntryPointButton" ||
+           type == L"SystemTray.CopilotIcon" ||
+           element.try_as<Controls::Primitives::ButtonBase>() != nullptr;
+}
+struct CachedTaskbarElement {
+    FrameworkElement element{nullptr};
+    DependencyObject parent{nullptr};
+    int childCount = 0;
+    bool obstacle = false;
+    bool movable = false;
+};
+struct TaskbarGeometryCache {
+    FrameworkElement root{nullptr};
+    FrameworkElement searchRoot{nullptr};
+    FrameworkElement repeater{nullptr};
+    std::vector<CachedTaskbarElement> elements;
+    bool complete = false;
+    size_t rebuilds = 0;
+};
+[[clang::no_destroy]] TaskbarGeometryCache g_geometryCache;
+void CollectTaskbarObstacles(FrameworkElement element, FrameworkElement repeater,
+                             bool movable, TaskbarGeometryCache& cache, int depth = 32) {
+    if (depth <= 0) { cache.complete = false; return; }
+    if (!element || element.Name() == kWidgetName) return;
+    movable = movable || (repeater && element == repeater);
+    bool obstacle = IsTaskbarObstacle(element);
+    int count = obstacle ? 0 : VisualTreeHelper::GetChildrenCount(element);
+    cache.elements.push_back({element, VisualTreeHelper::GetParent(element), count, obstacle, movable});
+    if (obstacle) return; // Children are part of this button's hit area.
+    for (int i = 0; i < count; ++i)
+        CollectTaskbarObstacles(VisualTreeHelper::GetChild(element, i).try_as<FrameworkElement>(),
+                               repeater, movable, cache, depth - 1);
+}
+bool GeometryCacheMatches(const TaskbarGeometryCache& cache, FrameworkElement root,
+                          FrameworkElement searchRoot, FrameworkElement repeater) {
+    if (cache.root != root || cache.searchRoot != searchRoot || cache.repeater != repeater || !cache.complete)
+        return false;
+    for (const auto& item : cache.elements) {
+        if (VisualTreeHelper::GetParent(item.element) != item.parent ||
+            (!item.obstacle && VisualTreeHelper::GetChildrenCount(item.element) != item.childCount)) return false;
+    }
+    return true;
+}
+bool VisibleInTaskbar(FrameworkElement element, FrameworkElement searchRoot) {
+    for (int depth = 0; element && depth < 32; ++depth) {
+        if (element.Visibility() != Visibility::Visible || element.Opacity() <= 0) return false;
+        if (element == searchRoot) return true;
+        element = VisualTreeHelper::GetParent(element).try_as<FrameworkElement>();
+    }
+    return false;
+}
+TaskbarGeometry MeasureTaskbarGeometry(FrameworkElement root,
+                                      FrameworkElement repeater,
+                                      double ownReservation = 0.0,
+                                      TaskbarGeometryCache* existingCache = nullptr) {
+    TaskbarGeometry result;
+    if (!root) return result;
+    result.width = root.ActualWidth(); result.height = root.ActualHeight();
+    result.ready = std::isfinite(result.width) && result.width > 0 &&
+                   std::isfinite(result.height) && result.height > 0;
+    auto searchRoot = root;
+    if (auto xaml = root.XamlRoot())
+        if (auto content = xaml.Content().try_as<FrameworkElement>()) searchRoot = content;
+    TaskbarGeometryCache temporary;
+    auto& cache = existingCache ? *existingCache : temporary;
+    if (!GeometryCacheMatches(cache, root, searchRoot, repeater)) {
+        cache.root = root; cache.searchRoot = searchRoot; cache.repeater = repeater;
+        cache.elements.clear(); cache.complete = true; ++cache.rebuilds;
+        // Cache hidden controls too: visibility changes need no rediscovery.
+        CollectTaskbarObstacles(searchRoot, repeater, false, cache);
+    }
+    result.ready = result.ready && cache.complete;
+    for (const auto& item : cache.elements) {
+        auto element = item.element;
+        if (!item.obstacle || !VisibleInTaskbar(element, searchRoot) ||
+            element.ActualWidth() <= 0 || element.ActualHeight() <= 0) continue;
+        try {
+            auto rect = element.TransformToVisual(root).TransformBounds(
+                Rect{0, 0, static_cast<float>(element.ActualWidth()),
+                     static_cast<float>(element.ActualHeight())});
+            if (!std::isfinite(rect.X) || !std::isfinite(rect.Width) || !std::isfinite(rect.Y) ||
+                !std::isfinite(rect.Height)) { result.ready = false; continue; }
+            if (rect.Y < result.height && rect.Y + rect.Height > 0) {
+                double left = rect.X - (item.movable ? ownReservation : 0.0);
+                result.occupied.push_back({left, left + rect.Width, item.movable});
+            }
+        } catch (...) {
+            result.ready = false; // Never guess that an unmeasurable button is free.
+        }
+    }
+    return result;
+}
+[[maybe_unused]] double TaskbarAvailableWidth() {
+    if (!g_rootGrid) return 0;
+    auto geometry = MeasureTaskbarGeometry(g_rootGrid, g_taskItemsRepeater, g_reservedMargin);
+    double width = geometry.width;
+    if (g_systemTrayFrame && g_systemTrayFrame.ActualWidth() > 0) {
+        try { width = std::min(width, static_cast<double>(g_systemTrayFrame.TransformToVisual(
+                    g_rootGrid).TransformPoint({0, 0}).X)); } catch (...) {}
+    }
+    return std::max(0.0, width);
+}
+std::vector<OccupiedInterval> g_lastBaselineObstacles;
+double g_lastGeometryWidth = 0.0;
+double g_lastGeometryHeight = 0.0;
 
 void ApplyTaskbarPlacement(const ModSettings& settings) {
-    if (!g_widgetHost || !g_rootGrid || g_applyingTaskbarPlacement) {
-        return;
-    }
+    if (!g_widgetHost || !g_rootGrid || g_applyingTaskbarPlacement) return;
+    if (g_reservationAwaitingLayout && g_layoutRevision <= g_reservationRevision) return;
+    g_reservationAwaitingLayout = false;
     g_applyingTaskbarPlacement = true;
-    struct PlacementGuard {
-        ~PlacementGuard() { g_applyingTaskbarPlacement = false; }
-    } clearGuard;
-
+    struct Guard { ~Guard() { g_applyingTaskbarPlacement = false; } } guard;
     Thickness margin{};
-    double buttonsWidth = 0.0;
+    bool ownMargin = false;
     if (g_taskItemsRepeater) {
         margin = g_taskItemsRepeater.Margin();
-        if (g_lastAppliedRepeaterMarginLeft &&
-            std::abs(margin.Left - *g_lastAppliedRepeaterMarginLeft) < 0.01) {
-            margin.Left -= g_reservedMargin;
-        } else if (g_reservedMargin != 0.0) {
-            Wh_Log(L"Taskbar repeater margin changed externally; adopting it as "
-                   L"the new base");
+        ownMargin = g_lastAppliedRepeaterMarginLeft &&
+            std::abs(margin.Left - *g_lastAppliedRepeaterMarginLeft) < 0.01;
+        if (ownMargin) margin.Left -= g_reservedMargin;
+        else if (g_reservedMargin != 0) g_reservedMargin = 0;
+    }
+    auto geometry = MeasureTaskbarGeometry(g_rootGrid, g_taskItemsRepeater,
+                                          ownMargin ? g_reservedMargin : 0.0, &g_geometryCache);
+    bool changed = geometry.occupied.size() != g_lastBaselineObstacles.size() ||
+                   std::abs(geometry.width - g_lastGeometryWidth) > 0.5 ||
+                   std::abs(geometry.height - g_lastGeometryHeight) > 0.5;
+    if (!changed) for (size_t i = 0; i < geometry.occupied.size(); ++i) {
+        const auto& a = geometry.occupied[i]; const auto& b = g_lastBaselineObstacles[i];
+        if (a.movable != b.movable || std::abs(a.left - b.left) > 0.5 ||
+            std::abs(a.right - b.right) > 0.5) { changed = true; break; }
+    }
+    if (g_rejectionNeedsBaseline) g_rejectionNeedsBaseline = false;
+    else if (changed) g_reservationRejected = false;
+    g_lastBaselineObstacles = geometry.occupied;
+    g_lastGeometryWidth = geometry.width;
+    g_lastGeometryHeight = geometry.height;
+    // Validate the arranged result against its unshifted measurement. A styler
+    // or layout manager need not move every button by the requested margin.
+    if (ownMargin && g_reservedMargin > 0 && g_widgetHost.Visibility() == Visibility::Visible) {
+        auto arranged = MeasureTaskbarGeometry(g_rootGrid, g_taskItemsRepeater, 0, &g_geometryCache);
+        if (!PlacementFits(arranged, {g_widgetHost.Margin().Left, g_widgetHost.Width(), 0}) ||
+            !ReservedControlsFit(arranged)) {
+            g_reservationRejected = true;
+            g_rejectionNeedsBaseline = true;
+            // Wait for the restored base layout. Subtracting a requested margin
+            // cannot reconstruct it when a centered/styled group moved less.
+            g_taskItemsRepeater.Margin(margin);
+            g_reservedMargin = 0;
+            g_lastAppliedRepeaterMarginLeft.reset();
+            g_widgetHost.Visibility(Visibility::Collapsed);
+            g_reservationAwaitingLayout = true;
+            g_reservationRevision = g_layoutRevision;
+            return;
         }
-        // DesiredSize includes margins. Removing them keeps our own reservation
-        // out of the content measurement and avoids feedback on repeated layout.
-        buttonsWidth = std::max(g_taskItemsRepeater.ActualWidth(),
-            static_cast<double>(g_taskItemsRepeater.DesiredSize().Width) -
-                g_taskItemsRepeater.Margin().Left - margin.Right);
     }
-    double measuredWidth = g_rootGrid.ActualWidth();
-    double availableWidth = TaskbarAvailableWidth();
-    TaskbarPlacement placement = ResolveTaskbarPlacement(
-        settings, availableWidth, buttonsWidth, margin.Left, margin.Right);
-    // A measured panel with no usable area differs from an unmeasured panel.
-    if (measuredWidth > 0.0 && availableWidth <= 0.0) {
-        placement = {};
-    }
-    auto visibility = placement.width > 0.0 ? Visibility::Visible
-                                             : Visibility::Collapsed;
-    if (g_widgetHost.Visibility() != visibility) {
-        g_widgetHost.Visibility(visibility);
-    }
-    if (!std::isfinite(g_widgetHost.Width()) ||
-        std::abs(g_widgetHost.Width() - placement.width) > 0.01) {
+    double preferred = PreferredTaskbarLeft(g_taskbarWindow.load(), geometry.width, settings);
+    auto placement = ResolveTaskbarPlacement(settings, geometry,
+                                            {preferred, g_previousPlacementLeft},
+                                            !g_reservationRejected);
+    auto visibility = placement.width > 0 ? Visibility::Visible : Visibility::Collapsed;
+    if (g_widgetHost.Visibility() != visibility) g_widgetHost.Visibility(visibility);
+    if (!std::isfinite(g_widgetHost.Width()) || std::abs(g_widgetHost.Width() - placement.width) > 0.01)
         g_widgetHost.Width(placement.width);
-    }
-    double height = WidgetHeightForTaskbar(g_rootGrid.ActualHeight());
-    if (!std::isfinite(g_widgetHost.Height()) ||
-        std::abs(g_widgetHost.Height() - height) > 0.01) {
+    double height = WidgetHeightForTaskbar(geometry.height);
+    if (!std::isfinite(g_widgetHost.Height()) || std::abs(g_widgetHost.Height() - height) > 0.01)
         g_widgetHost.Height(height);
-    }
-    Thickness hostMargin{placement.left, 0, 0, 0};
-    if (std::abs(g_widgetHost.Margin().Left - placement.left) > 0.01) {
-        g_widgetHost.Margin(hostMargin);
-    }
+    if (std::abs(g_widgetHost.Margin().Left - placement.left) > 0.01)
+        g_widgetHost.Margin(Thickness{placement.left, 0, 0, 0});
+    g_previousPlacementLeft = placement.left;
     if (g_taskItemsRepeater) {
-        double baseLeft = margin.Left;
+        double base = margin.Left;
         margin.Left += placement.reserved;
-        if (std::abs(g_taskItemsRepeater.Margin().Left - margin.Left) > 0.01 ||
-            (placement.reserved == 0.0 && g_reservedMargin != 0.0)) {
+        if (std::abs(g_taskItemsRepeater.Margin().Left - margin.Left) > 0.01) {
+            g_reservationAwaitingLayout = true;
+            g_reservationRevision = g_layoutRevision;
             g_taskItemsRepeater.Margin(margin);
         }
-        // Track what was actually written, including when a subpixel update
-        // was skipped. Otherwise repeated layouts could accumulate base drift.
-        double appliedLeft = g_taskItemsRepeater.Margin().Left;
-        g_reservedMargin = appliedLeft - baseLeft;
-        g_lastAppliedRepeaterMarginLeft = g_reservedMargin != 0.0
-            ? std::optional<double>{appliedLeft} : std::nullopt;
-    } else {
-        g_reservedMargin = 0.0;
+        g_reservedMargin = g_taskItemsRepeater.Margin().Left - base;
+        g_lastAppliedRepeaterMarginLeft = g_reservedMargin != 0
+            ? std::optional<double>{g_taskItemsRepeater.Margin().Left} : std::nullopt;
     }
 }
-
 void RefreshTaskbarPlacement() {
-    if (g_unloading) {
-        return;
-    }
-    try {
-        ApplyTaskbarPlacement(*CurrentSettings());
-    } catch (...) {
-        Wh_Log(L"Taskbar placement update failed: %08X",
-               static_cast<unsigned>(winrt::to_hresult()));
-    }
+    if (g_unloading) return;
+    try { ApplyTaskbarPlacement(*CurrentSettings()); }
+    catch (...) { Wh_Log(L"Taskbar geometry update failed: %08X", static_cast<unsigned>(winrt::to_hresult())); }
 }
 
 void UpdateTimerInterval();
@@ -4040,6 +4354,7 @@ void ApplyWidgetSettings() {
     }
     auto settingsSnapshot = CurrentSettings();
     const ModSettings& settings = *settingsSnapshot;
+    EnsurePlacementControl(settings);
     RefreshThemeBrushes(settings);
     if (g_historyInterval != settings.updateInterval ||
         g_historyWindow != settings.historySeconds) {
@@ -4229,6 +4544,8 @@ LRESULT CALLBACK TaskbarNotificationsProc(HWND window, UINT message,
             return 0;
         }
         if (message == WM_DISPLAYCHANGE || message == WM_SETTINGCHANGE) {
+            CancelMoveEditor();
+            InvalidateMonitorKeys();
             g_placementApplyPending = true;
             ResetPlacementRetryState();
             PostTaskbarRefresh(true);
@@ -4485,6 +4802,7 @@ Grid CreateMemoryRow(PCWSTR label,
 }
 
 bool RemoveWidget() {
+    RemovePlacementControl();
     if (g_widget && g_actualThemeChangedToken.value) {
         try {
             g_widget.ActualThemeChanged(g_actualThemeChangedToken);
@@ -4530,6 +4848,11 @@ bool RemoveWidget() {
     }
     g_reservedMargin = 0.0;
     g_lastAppliedRepeaterMarginLeft.reset();
+    g_reservationAwaitingLayout = false;
+    g_reservationRejected = false;
+    g_rejectionNeedsBaseline = false;
+    g_lastBaselineObstacles.clear();
+    g_geometryCache = {}; // Release cached XAML references on their owning thread.
 
     if (g_rootGrid && g_widgetHost) {
         uint32_t index = 0;
@@ -4706,14 +5029,16 @@ bool InjectWidget(FrameworkElement taskbarFrame) {
         return winrt::get_class_name(child) == L"SystemTray.SystemTrayFrame" ||
                child.Name() == L"SystemTrayFrame";
     });
-    auto sizeChanged = [](auto const&, auto const&) { RefreshTaskbarPlacement(); };
+    auto sizeChanged = [](auto const&, auto const&) { QueueTaskbarPlacement(); };
     g_rootSizeChangedToken = root.SizeChanged(sizeChanged);
     // SizeChanged can run before sibling positions have finished arranging.
     // LayoutUpdated also covers a tray moved without a size change by a styler.
     // Placement writes only changed properties, so the extra pass settles.
     g_rootLayoutUpdatedToken = root.LayoutUpdated([](auto const&, auto const&) {
-        RefreshTaskbarPlacement();
+        ++g_layoutRevision;
+        QueueTaskbarPlacement();
     });
+    EnsurePlacementControl(*CurrentSettings());
     g_actualThemeChangedToken = g_widget.ActualThemeChanged(
         [](auto const&, auto const&) {
             try {
@@ -4993,6 +5318,7 @@ HWND FindOnlyTaskbarWindow() {
 HWND FindConfiguredTaskbarWindow(
     const std::vector<DisplayMonitor>& monitors,
     bool logFallback = true) {
+    if (auto dragged = DraggedTaskbarWindow()) return *dragged ? *dragged : FindPrimaryTaskbarWindow();
     int monitorNumber = CurrentSettings()->monitor;
     if (monitorNumber <= static_cast<int>(monitors.size())) {
         if (HWND window =
@@ -5260,26 +5586,20 @@ bool ApplyWidgetToTaskbarWindow(
 
 struct TaskbarProbeContext {
     HWND window = nullptr;
-    FrameworkElement frame{nullptr};
+    bool ready = false;
 };
-
-void ProbeTaskbarWindow(void* contextValue) {
-    auto* context = reinterpret_cast<TaskbarProbeContext*>(contextValue);
+void ProbeTaskbarWindow(void* value) {
+    auto& context = *static_cast<TaskbarProbeContext*>(value);
     try {
-        context->frame = FindTaskbarFrame(context->window);
+        auto frame = FindTaskbarFrame(context.window);
+        context.ready = frame && FindDirectChildByName(frame, L"RootGrid") != nullptr;
     } catch (...) {
-        HRESULT error = winrt::to_hresult();
-        Wh_Log(L"Probing taskbar XAML failed: %08X",
-               static_cast<unsigned>(error));
+        Wh_Log(L"Probing taskbar XAML failed: %08X", static_cast<unsigned>(winrt::to_hresult()));
     }
 }
-
-FrameworkElement FindReadyTaskbarFrame(HWND window) {
-    TaskbarProbeContext context{window, nullptr};
-    if (!RunFromWindowThread(window, ProbeTaskbarWindow, &context)) {
-        return nullptr;
-    }
-    return context.frame;
+bool IsReadyTaskbarFrame(HWND window) {
+    TaskbarProbeContext context{window};
+    return RunFromWindowThread(window, ProbeTaskbarWindow, &context) && context.ready;
 }
 
 struct RemoveWidgetForMoveContext {
@@ -5290,7 +5610,13 @@ void RemoveWidgetForMove(void* contextValue) {
     auto* context =
         reinterpret_cast<RemoveWidgetForMoveContext*>(contextValue);
     try {
+        auto cpuHistory = g_cpuHistory;
+        auto gpuHistory = g_gpuHistory;
+        auto renderedSequence = g_lastRenderedMetricsSequence;
         context->succeeded = RemoveWidget();
+        g_cpuHistory = std::move(cpuHistory);
+        g_gpuHistory = std::move(gpuHistory);
+        g_lastRenderedMetricsSequence = renderedSequence; // Do not replay the published queue.
     } catch (...) {
         HRESULT error = winrt::to_hresult();
         Wh_Log(L"Removing widget before monitor switch failed: %08X",
@@ -5471,22 +5797,21 @@ void ApplyOnTaskbarUiThreadImpl(void* contextValue) {
     }
 
     HWND targetWindow = requestedWindow;
-    FrameworkElement targetFrame = FindReadyTaskbarFrame(targetWindow);
-    if (!targetFrame) {
+    bool targetReady = IsReadyTaskbarFrame(targetWindow);
+    if (!targetReady) {
         HWND primaryWindow = FindPrimaryTaskbarWindow();
         if (primaryWindow && primaryWindow != targetWindow) {
-            FrameworkElement primaryFrame =
-                FindReadyTaskbarFrame(primaryWindow);
-            if (primaryFrame) {
+            bool primaryReady = IsReadyTaskbarFrame(primaryWindow);
+            if (primaryReady) {
                 Wh_Log(
                     L"Selected taskbar is not ready; using the primary taskbar");
                 targetWindow = primaryWindow;
-                targetFrame = std::move(primaryFrame);
+                targetReady = true;
             }
         }
     }
 
-    if (!targetFrame) {
+    if (!targetReady) {
         Wh_Log(L"No taskbar exposes a ready XAML root");
         if (ApplyLoadedFrameFallback(context->fallbackFrame, targetWindow)) {
             context->succeeded = true;
@@ -5525,7 +5850,7 @@ void ApplyOnTaskbarUiThreadImpl(void* contextValue) {
         widgetRemovedForMove = true;
     }
 
-    if (ApplyWidgetToTaskbarWindow(targetWindow, targetFrame)) {
+    if (ApplyWidgetToTaskbarWindow(targetWindow)) {
         CompletePlacement(requestedWindow, targetWindow);
         context->succeeded = true;
         return;
@@ -5603,7 +5928,8 @@ bool ApplyOnTaskbarThread(FrameworkElement fallbackFrame = nullptr,
             attemptedThreadIds[attemptedThreadCount++] = dispatchThreadId;
 
             ApplyOnTaskbarThreadContext context{
-                fallbackFrame, requestedWindow, refreshExistingWidget, false};
+                dispatchThreadId == GetCurrentThreadId() ? fallbackFrame : nullptr,
+                requestedWindow, refreshExistingWidget, false};
             if (RunFromWindowThread(dispatchWindow, ApplyOnTaskbarUiThread,
                                     &context)) {
                 return context.succeeded;
@@ -5615,6 +5941,898 @@ bool ApplyOnTaskbarThread(FrameworkElement fallbackFrame = nullptr,
     }
     Wh_Log(L"Taskbar UI thread is unavailable; placement remains pending");
     return false;
+}
+
+// The editor and its native windows are owned by one UI thread. Its geometry
+// probes return plain data, never FrameworkElement references from another UI.
+struct MoveHotkey { UINT modifiers = 0; UINT key = 0; };
+std::optional<MoveHotkey> ParseMoveHotkey(std::wstring text, std::wstring* reason = nullptr) {
+    MoveHotkey result;
+    if (text.empty()) return result;
+    auto invalid = [&](const wchar_t* message) -> std::optional<MoveHotkey> {
+        if (reason) *reason = message;
+        return std::nullopt;
+    };
+    size_t begin = 0;
+    while (begin <= text.size()) {
+        size_t end = text.find(L'+', begin);
+        auto part = text.substr(begin, end == std::wstring::npos ? end : end - begin);
+        size_t first = part.find_first_not_of(L" \t"), last = part.find_last_not_of(L" \t");
+        if (first == std::wstring::npos) return invalid(L"Empty component in the combination");
+        part = ToLower(part.substr(first, last - first + 1));
+        UINT modifier = part == L"ctrl" ? MOD_CONTROL : part == L"alt" ? MOD_ALT :
+                        part == L"shift" ? MOD_SHIFT : part == L"win" ? MOD_WIN : 0;
+        if (modifier) {
+            if (result.modifiers & modifier) return invalid(L"Duplicate modifier");
+            result.modifiers |= modifier;
+        } else {
+            if (result.key) return invalid(L"Only one letter, digit or function key is allowed");
+            if (part.size() == 1 && ((part[0] >= L'a' && part[0] <= L'z') ||
+                                    (part[0] >= L'0' && part[0] <= L'9')))
+                result.key = static_cast<UINT>(std::towupper(part[0]));
+            else if (part.size() >= 2 && part[0] == L'f') {
+                if (part.size() > 3 || part[1] < L'1' || part[1] > L'9' ||
+                    (part.size() == 3 && (part[2] < L'0' || part[2] > L'9')))
+                    return invalid(L"Function key must be F1-F24");
+                int number = part[1] - L'0';
+                if (part.size() == 3) number = number * 10 + part[2] - L'0';
+                if (number > 24) return invalid(L"Function key must be F1-F24");
+                result.key = VK_F1 + number - 1;
+            } else return invalid(L"Unsupported key or modifier; use Ctrl/Alt/Shift/Win and A-Z, 0-9 or F1-F24");
+        }
+        if (end == std::wstring::npos) break;
+        begin = end + 1;
+    }
+    return result.key ? std::optional<MoveHotkey>{result} : invalid(L"The combination has no key");
+}
+struct PlacementProfiles {
+    int monitor = 1;
+    int offset = 10;
+    std::wstring target;
+    std::unordered_map<std::wstring, double> positions;
+};
+PlacementProfiles g_profiles;
+std::mutex g_profilesMutex;
+std::mutex g_monitorKeysMutex;
+std::unordered_map<std::wstring, std::wstring> g_monitorKeys;
+void InvalidateMonitorKeys() { std::lock_guard lock(g_monitorKeysMutex); g_monitorKeys.clear(); }
+std::wstring SerializeProfiles(const PlacementProfiles& profiles) {
+    std::wstring result = L"1\n" + std::to_wstring(profiles.monitor) + L" " +
+                          std::to_wstring(profiles.offset) + L"\n" + profiles.target + L"\n";
+    // Sorted output makes saves and corruption diagnostics reproducible.
+    std::vector<std::pair<std::wstring, double>> ordered(profiles.positions.begin(), profiles.positions.end());
+    std::sort(ordered.begin(), ordered.end());
+    for (const auto& [key, fraction] : ordered) {
+        char value[64];
+        auto converted = std::to_chars(value, value + sizeof(value), fraction);
+        if (converted.ec != std::errc{}) continue;
+        result += key + L"\t" + std::wstring(value, converted.ptr) + L"\n";
+    }
+    return result;
+}
+std::optional<PlacementProfiles> ParseProfiles(const std::wstring& text) {
+    if (text.size() > 32767 || !text.starts_with(L"1\n")) return std::nullopt;
+    PlacementProfiles result;
+    size_t second = text.find(L'\n', 2), third = text.find(L'\n', second + 1);
+    if (second == std::wstring::npos || third == std::wstring::npos) return std::nullopt;
+    auto wideBase = text.substr(2, second - 2);
+    if (!std::all_of(wideBase.begin(), wideBase.end(), [](wchar_t c) { return c < 128; })) return std::nullopt;
+    std::string base(wideBase.begin(), wideBase.end());
+    auto separator = base.find(' ');
+    if (separator == std::string::npos) return std::nullopt;
+    auto monitor = std::from_chars(base.data(), base.data() + separator, result.monitor);
+    auto offset = std::from_chars(base.data() + separator + 1, base.data() + base.size(), result.offset);
+    if (monitor.ec != std::errc{} || monitor.ptr != base.data() + separator ||
+        offset.ec != std::errc{} || offset.ptr != base.data() + base.size() ||
+        result.monitor < 1 || result.monitor > 32 || result.offset < 0) return std::nullopt;
+    result.target = text.substr(second + 1, third - second - 1);
+    if (result.target.size() > 1024 || result.target.find(L'\t') != std::wstring::npos) return std::nullopt;
+    for (size_t start = third + 1; start < text.size();) {
+        size_t stop = text.find(L'\n', start), tab = text.find(L'\t', start);
+        if (stop == std::wstring::npos || tab == std::wstring::npos || tab >= stop || tab == start)
+            return std::nullopt;
+        auto key = text.substr(start, tab - start);
+        auto wide = text.substr(tab + 1, stop - tab - 1);
+        if (key.size() > 1024 || wide.empty() || wide.size() > 64) return std::nullopt;
+        if (!std::all_of(wide.begin(), wide.end(), [](wchar_t c) { return c < 128; })) return std::nullopt;
+        std::string narrow(wide.begin(), wide.end()); double value = 0;
+        auto parsed = std::from_chars(narrow.data(), narrow.data() + narrow.size(), value);
+        if (parsed.ec != std::errc{} || parsed.ptr != narrow.data() + narrow.size() ||
+            !std::isfinite(value) || value < 0 || value > 1 || result.positions.contains(key)) return std::nullopt;
+        result.positions[key] = value;
+        if (result.positions.size() > 32) return std::nullopt;
+        start = stop + 1;
+    }
+    if (!result.target.empty() && !result.positions.contains(result.target)) return std::nullopt;
+    return result;
+}
+PlacementProfiles PlacementProfilesSnapshot() {
+    std::lock_guard lock(g_profilesMutex); return g_profiles;
+}
+void SetPlacementProfiles(PlacementProfiles profiles) {
+    std::lock_guard lock(g_profilesMutex); g_profiles = std::move(profiles);
+}
+bool SavePlacementProfiles(const PlacementProfiles& profiles) {
+    auto text = SerializeProfiles(profiles);
+    if (text.size() > 32767) { Wh_Log(L"Saved widget positions exceed the local storage size limit"); return false; }
+    if (!Wh_SetStringValue(L"placement.v1", text.c_str())) {
+        Wh_Log(L"Saving widget position to local storage failed");
+        return false;
+    }
+    return true;
+}
+void LoadPlacementProfiles() {
+    auto settings = CurrentSettings();
+    PlacementProfiles profiles; profiles.monitor = settings->monitor; profiles.offset = settings->leftOffset;
+    std::vector<wchar_t> buffer(32768);
+    size_t length = Wh_GetStringValue(L"placement.v1", buffer.data(), buffer.size());
+    if (length > 0 && length < buffer.size()) {
+        if (auto parsed = ParseProfiles(buffer.data())) profiles = std::move(*parsed);
+        else Wh_Log(L"Ignoring invalid saved widget positions");
+    }
+    SetPlacementProfiles(std::move(profiles));
+}
+std::wstring MonitorKey(HWND window) {
+    if (!window) return {};
+    MONITORINFOEXW info{}; info.cbSize = sizeof(info);
+    if (!GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONULL), &info)) return {};
+    {
+        std::lock_guard lock(g_monitorKeysMutex);
+        if (auto it = g_monitorKeys.find(info.szDevice); it != g_monitorKeys.end()) return it->second;
+    }
+    std::wstring key;
+    // Device paths survive display renumbering; an HMONITOR or DISPLAY1 does not.
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        UINT32 pathsCount = 0, modesCount = 0;
+        if (GetDisplayConfigBufferSizes(QDC_ONLY_ACTIVE_PATHS, &pathsCount, &modesCount) != ERROR_SUCCESS) break;
+        std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathsCount);
+        std::vector<DISPLAYCONFIG_MODE_INFO> modes(modesCount);
+        LONG status = QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS, &pathsCount, paths.data(), &modesCount, modes.data(), nullptr);
+        if (status == ERROR_INSUFFICIENT_BUFFER) continue;
+        if (status != ERROR_SUCCESS) break;
+        for (UINT32 i = 0; i < pathsCount; ++i) {
+            DISPLAYCONFIG_SOURCE_DEVICE_NAME source{};
+            source.header = {DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME, sizeof(source), paths[i].sourceInfo.adapterId, paths[i].sourceInfo.id};
+            if (DisplayConfigGetDeviceInfo(&source.header) != ERROR_SUCCESS ||
+                _wcsicmp(source.viewGdiDeviceName, info.szDevice) != 0) continue;
+            DISPLAYCONFIG_TARGET_DEVICE_NAME target{};
+            target.header = {DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, sizeof(target), paths[i].targetInfo.adapterId, paths[i].targetInfo.id};
+            if (DisplayConfigGetDeviceInfo(&target.header) == ERROR_SUCCESS) {
+                auto candidate = ToLower(target.monitorDevicePath);
+                if (!candidate.empty() && (key.empty() || candidate < key)) key = std::move(candidate);
+            }
+        }
+        break;
+    }
+    if (!key.empty()) { std::lock_guard lock(g_monitorKeysMutex); g_monitorKeys[info.szDevice] = key; }
+    return key;
+}
+std::optional<HWND> DraggedTaskbarWindow() {
+    auto profiles = PlacementProfilesSnapshot();
+    if (profiles.target.empty()) return std::nullopt;
+    for (const auto& monitor : EnumerateDisplayMonitors())
+        if (HWND window = FindTaskbarWindowForMonitor(monitor.handle))
+            if (MonitorKey(window) == profiles.target) return window;
+    return std::optional<HWND>{nullptr};
+}
+double PreferredTaskbarLeft(HWND window, double width, const ModSettings& settings) {
+    auto profiles = PlacementProfilesSnapshot();
+    auto key = MonitorKey(window);
+    if (auto it = profiles.positions.find(key); !key.empty() && it != profiles.positions.end())
+        return it->second * std::max(0.0, width - settings.width);
+    return settings.leftOffset;
+}
+bool ReconcileProfiles(PlacementProfiles& profiles, const ModSettings& settings,
+                       const std::wstring& currentKey) {
+    bool changed = false;
+    if (profiles.monitor != settings.monitor) {
+        profiles.target.clear(); profiles.monitor = settings.monitor; changed = true;
+    }
+    if (profiles.offset != settings.leftOffset) {
+        if (!currentKey.empty()) profiles.positions.erase(currentKey);
+        profiles.offset = settings.leftOffset; changed = true;
+    }
+    return changed;
+}
+void ReconcilePlacementSettings() {
+    auto settings = CurrentSettings(); auto profiles = PlacementProfilesSnapshot();
+    std::wstring currentKey;
+    if (profiles.offset != settings->leftOffset) {
+        auto prospective = profiles;
+        if (profiles.monitor != settings->monitor) prospective.target.clear();
+        SetPlacementProfiles(std::move(prospective));
+        currentKey = MonitorKey(FindConfiguredTaskbarWindow());
+    }
+    bool changed = ReconcileProfiles(profiles, *settings, currentKey);
+    SetPlacementProfiles(profiles);
+    if (changed) SavePlacementProfiles(profiles);
+}
+
+std::optional<PlacementProfiles> ConfirmPlacementPreference(
+    PlacementProfiles next, const ModSettings& settings, const std::wstring& key,
+    double left, double panelWidth, bool reset) {
+    if (reset) { next.target.clear(); next.positions.clear(); }
+    else {
+        if (key.empty() || !std::isfinite(left) || !std::isfinite(panelWidth) ||
+            (!next.positions.contains(key) && next.positions.size() >= 32)) return std::nullopt;
+        next.target = key;
+        double span = std::max(0.0, panelWidth - settings.width);
+        next.positions[key] = span > 0 ? std::clamp(left / span, 0.0, 1.0) : 0;
+    }
+    next.monitor = settings.monitor; next.offset = settings.leftOffset;
+    return next;
+}
+
+struct TaskbarProjection {
+    HWND window = nullptr;
+    TaskbarGeometry geometry;
+    POINT origin{};
+    RECT panel{};
+    double scale = 1.0;
+    std::wstring key;
+};
+struct ScopedPhysicalDpi {
+    DPI_AWARENESS_CONTEXT previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    ~ScopedPhysicalDpi() { if (previous) SetThreadDpiAwarenessContext(previous); }
+};
+double ScreenPointToPreferredLeft(const TaskbarProjection& projection, POINT point,
+                                 double grabFraction, double widgetWidth) {
+    return (point.x - projection.origin.x) / projection.scale - grabFraction * widgetWidth;
+}
+void ProbeTaskbarGeometry(void* value) {
+    auto& probe = *static_cast<TaskbarProjection*>(value);
+    try {
+        ScopedPhysicalDpi physicalCoordinates;
+        auto frame = FindTaskbarFrame(probe.window);
+        if (!frame) return;
+        auto root = FindDirectChildByName(frame, L"RootGrid");
+        auto repeater = FindDirectChildByName(root, L"TaskbarFrameRepeater");
+        bool current = probe.window == g_taskbarWindow.load();
+        probe.geometry = MeasureTaskbarGeometry(root, repeater, current ? g_reservedMargin : 0,
+                                               current ? &g_geometryCache : nullptr);
+        auto xaml = root.XamlRoot();
+        if (!xaml || !probe.geometry.ready) return;
+        probe.scale = xaml.RasterizationScale();
+        if (!std::isfinite(probe.scale) || probe.scale <= 0) { probe.geometry.ready = false; return; }
+        probe.origin = {0, 0}; ClientToScreen(probe.window, &probe.origin);
+        if (auto content = xaml.Content().try_as<UIElement>()) {
+            auto point = root.TransformToVisual(content).TransformPoint({0, 0});
+            probe.origin.x += static_cast<LONG>(std::lround(point.X * probe.scale));
+            probe.origin.y += static_cast<LONG>(std::lround(point.Y * probe.scale));
+        }
+        GetWindowRect(probe.window, &probe.panel);
+    } catch (...) { probe.geometry.ready = false; }
+}
+TaskbarProjection ProjectTaskbar(HWND window) {
+    TaskbarProjection result; result.window = window;
+    if (IsCurrentProcessTaskbarWindow(window) && RunFromWindowThread(window, ProbeTaskbarGeometry, &result))
+        result.key = MonitorKey(window);
+    return result;
+}
+struct PreviewText {
+    std::wstring text, font;
+    Rect bounds{};
+    Color color{};
+    double fontSize = 11;
+    int weight = 400;
+    bool right = false;
+};
+struct PreviewBar { Rect bounds{}; Color color{}; };
+struct PreviewGraph { Rect bounds{}; Color color{}; SparklineRuns runs; };
+struct WidgetPreviewFrame {
+    uint64_t sequence = 0;
+    bool ready = false, light = false, highContrast = false;
+    double width = 410;
+    std::vector<PreviewText> texts;
+    std::vector<PreviewBar> bars;
+    std::vector<PreviewGraph> graphs;
+};
+Color PreviewBrushColor(Brush brush, double opacity, Color fallback) {
+    if (auto solid = brush.try_as<SolidColorBrush>()) {
+        fallback = solid.Color(); opacity *= solid.Opacity();
+    }
+    fallback.A = static_cast<uint8_t>(std::lround(fallback.A * std::clamp(opacity, 0.0, 1.0)));
+    return fallback;
+}
+Rect PreviewElementBounds(FrameworkElement element, Rect fallback) {
+    if (element && element.ActualWidth() > 0 && element.ActualHeight() > 0)
+        return element.TransformToVisual(g_widget).TransformBounds(
+            {0, 0, static_cast<float>(element.ActualWidth()), static_cast<float>(element.ActualHeight())});
+    return fallback; // A collapsed host can still preview its live data.
+}
+struct CaptureWidgetPreviewContext { WidgetPreviewFrame frame; bool changed = false; };
+void CaptureWidgetPreview(void* value) {
+    auto& context = *static_cast<CaptureWidgetPreviewContext*>(value);
+    if (!g_widget) return;
+    bool light = g_cachedWidgetTheme == ElementTheme::Light;
+    if (context.frame.ready && context.frame.sequence == g_lastRenderedMetricsSequence &&
+        context.frame.light == light && context.frame.highContrast == g_cachedHighContrast) return;
+    auto settings = CurrentSettings();
+    WidgetPreviewFrame frame;
+    frame.ready = true; frame.sequence = g_lastRenderedMetricsSequence;
+    frame.light = light; frame.highContrast = g_cachedHighContrast; frame.width = settings->width;
+    Color textFallback = light ? Color{255, 25, 25, 25} : Color{255, 238, 238, 238};
+    if (frame.highContrast) textFallback = ColorFromColorRef(GetSysColor(COLOR_WINDOWTEXT));
+    auto columns = ResolveWidgetColumns(frame.width);
+    auto text = [&](TextBlock element, double x, double y, double width) {
+        if (!element) return;
+        auto label = element.Text();
+        bool rightAligned = element.TextAlignment() == TextAlignment::Right;
+        auto bounds = PreviewElementBounds(element,
+            {static_cast<float>(x + kWidgetSidePadding), static_cast<float>(y), static_cast<float>(width), static_cast<float>(kRowHeight)});
+        // TextBlock can report only its glyph width while its origin is still
+        // the cell origin. Align native text in the allocated cell, as XAML does.
+        bounds.Y += (bounds.Height - static_cast<float>(kRowHeight)) / 2;
+        bounds.Width = static_cast<float>(width); bounds.Height = static_cast<float>(kRowHeight);
+        frame.texts.push_back({std::wstring(label.begin(), label.end()), std::wstring(element.FontFamily().Source()),
+            bounds,
+            PreviewBrushColor(element.Foreground(), element.Opacity(), textFallback), element.FontSize(),
+            element.FontWeight().Weight, rightAligned});
+    };
+    for (int row = 0; row < 2; ++row) {
+        double y = row * (kRowHeight + kRowGap);
+        text(row ? g_gpuLabel : g_cpuLabel, 0, y, kMetricLabelWidth);
+        text(row ? g_gpuUsageText : g_cpuUsageText, kMetricLabelWidth, y, kMetricUsageWidth);
+        text(row ? g_gpuTempText : g_cpuTempText, kMetricLabelWidth + kMetricUsageWidth, y, kMetricTempWidth);
+        double right = kWidgetSidePadding + columns.left + kColumnGap;
+        text(row ? g_vramLabel : g_ramLabel, right - kWidgetSidePadding, y, kMemoryLabelWidth);
+        text(row ? g_vramPercentText : g_ramPercentText, right - kWidgetSidePadding + kMemoryLabelWidth, y, kMemoryPercentWidth);
+        text(row ? g_vramCapacityText : g_ramCapacityText, right - kWidgetSidePadding + kMemoryLabelWidth + kMemoryPercentWidth, y,
+             columns.right - kMemoryLabelWidth - kMemoryPercentWidth);
+        auto graph = row ? g_gpuGraph : g_cpuGraph;
+        if (graph) frame.graphs.push_back({PreviewElementBounds(graph,
+            {static_cast<float>(kWidgetSidePadding + kMetricLabelWidth + kMetricUsageWidth + kMetricTempWidth + kGraphLeftGap),
+             static_cast<float>(y + (kRowHeight - kGraphHeight) / 2), static_cast<float>(columns.graph), kGraphHeight}),
+            PreviewBrushColor(graph.Stroke(), graph.Opacity(), Color{255, 120, 168, 255}),
+            BuildSparklineRuns(row ? g_gpuHistory : g_cpuHistory, settings->historySeconds,
+                               settings->updateInterval, columns.graph, kGraphHeight)});
+        for (auto bar : {row ? g_vramTrack : g_ramTrack, row ? g_vramFill : g_ramFill}) {
+            if (!bar) continue;
+            double width = std::isfinite(bar.Width()) ? bar.Width() : 0;
+            frame.bars.push_back({PreviewElementBounds(bar, {static_cast<float>(right),
+                static_cast<float>(y + kRowHeight - 1.25), static_cast<float>(width), 1.25f}),
+                PreviewBrushColor(bar.Fill(), bar.Opacity(), Color{255, 120, 168, 255})});
+        }
+    }
+    context.frame = std::move(frame); context.changed = true;
+}
+bool OnPreviewSourceThread(HWND source, RunFromWindowThreadProc callback, void* context) {
+    if (GetCurrentThreadId() == g_taskbarThreadId.load()) { callback(context); return true; }
+    return source && RunFromWindowThread(source, callback, context);
+}
+struct SourceWidgetOpacityContext { HWND source; bool hide; double original = 1; bool changed = false; };
+void SetSourceWidgetOpacity(void* value) {
+    auto& context = *static_cast<SourceWidgetOpacityContext*>(value);
+    if (!g_widgetHost || g_taskbarWindow.load() != context.source) return;
+    if (context.hide) {
+        context.original = g_widgetHost.Opacity(); g_widgetHost.Opacity(0); context.changed = true;
+    } else if (g_widgetHost.Opacity() == 0) g_widgetHost.Opacity(context.original);
+}
+struct PreviewSurface {
+    HDC dc = nullptr;
+    HBITMAP bitmap = nullptr;
+    HGDIOBJ previous = nullptr;
+    uint32_t* pixels = nullptr;
+    int width = 0, height = 0;
+    ~PreviewSurface() {
+        if (dc && previous) SelectObject(dc, previous);
+        if (bitmap) DeleteObject(bitmap);
+        if (dc) DeleteDC(dc);
+    }
+    bool Resize(int w, int h) {
+        if (w == width && h == height && bitmap) return true;
+        if (!dc) dc = CreateCompatibleDC(nullptr);
+        if (!dc) return false;
+        if (previous) { SelectObject(dc, previous); previous = nullptr; }
+        if (bitmap) { DeleteObject(bitmap); bitmap = nullptr; }
+        BITMAPINFO info{}; info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        info.bmiHeader.biWidth = w; info.bmiHeader.biHeight = -h;
+        info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 32; info.bmiHeader.biCompression = BI_RGB;
+        void* data = nullptr;
+        bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &data, nullptr, 0);
+        if (!bitmap) return false;
+        pixels = static_cast<uint32_t*>(data); previous = SelectObject(dc, bitmap);
+        width = w; height = h; return true;
+    }
+};
+ULONG_PTR g_previewGraphicsToken = 0;
+bool EnsurePreviewGraphics() {
+    if (g_previewGraphicsToken) return true;
+    Gdiplus::GdiplusStartupInput input;
+    return Gdiplus::GdiplusStartup(&g_previewGraphicsToken, &input, nullptr) == Gdiplus::Ok;
+}
+void StopPreviewGraphics() {
+    if (g_previewGraphicsToken) { Gdiplus::GdiplusShutdown(g_previewGraphicsToken); g_previewGraphicsToken = 0; }
+}
+struct MoveEditorState {
+    HWND window = nullptr;
+    HWND previousForeground = nullptr;
+    bool dragging = false;
+    bool reset = false;
+    bool pointerOutside = false;
+    bool hovered = false, sourceHidden = false, dirty = true, closing = false;
+    HWND source = nullptr;
+    double sourceOpacity = 1;
+    WidgetPreviewFrame visual;
+    std::shared_ptr<PreviewSurface> surface;
+    RECT renderedBody{}, renderedContent{};
+    double renderedDpi = 0;
+    double grabFraction = 0.5;
+    double preferredLeft = 0;
+    TaskbarProjection target;
+    TaskbarPlacement candidate;
+    std::chrono::steady_clock::time_point lastProbe{};
+};
+std::shared_ptr<MoveEditorState> g_moveEditor;
+std::atomic<HWND> g_moveEditorWindow{nullptr};
+std::atomic<bool> g_moveCommitting{false};
+std::atomic<uint64_t> g_moveEpoch{0};
+constexpr wchar_t kMoveWindowClass[] = L"WindhawkTaskbarSystemInfoMove_" WH_MOD_ID;
+constexpr wchar_t kPlacementWindowClass[] = L"WindhawkTaskbarSystemInfoPlacement_" WH_MOD_ID;
+constexpr UINT kGeometryMessage = WM_APP + 190;
+constexpr int kMoveHotkeyId = 190;
+HMODULE PlacementModule() {
+    HMODULE module = nullptr;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                      reinterpret_cast<PCWSTR>(&PlacementModule), &module);
+    return module;
+}
+struct MovePreviewLayout { RECT bounds{}, body{}, content{}; double contentScale = 1; };
+MovePreviewLayout ResolveMovePreviewLayout(const MoveEditorState& editor, RECT display) {
+    const auto& target = editor.target;
+    double width = editor.candidate.width > 0 ? editor.candidate.width : CurrentSettings()->width;
+    double left = editor.candidate.width > 0 ? editor.candidate.left : editor.preferredLeft;
+    if (!editor.candidate.width) left = std::clamp(left, 0.0, std::max(0.0, target.geometry.width - width));
+    LONG x = target.origin.x + static_cast<LONG>(std::lround(left * target.scale));
+    LONG w = static_cast<LONG>(std::lround(width * target.scale));
+    double sourceWidth = editor.visual.ready ? editor.visual.width : CurrentSettings()->width;
+    double heightLimit = target.geometry.height > 0 ? target.geometry.height : kWidgetHeight;
+    double downScale = std::min({1.0, width / sourceWidth, heightLimit / kWidgetHeight});
+    LONG h = std::max<LONG>(1, static_cast<LONG>(std::lround(kWidgetHeight * downScale * target.scale)));
+    LONG y = target.origin.y + std::max<LONG>(0, static_cast<LONG>(std::lround(target.geometry.height * target.scale)) - h) / 2;
+    LONG padding = std::max<LONG>(1, static_cast<LONG>(std::lround(3 * target.scale)));
+    LONG bodyLeft = std::max(display.left, x), bodyRight = std::min(display.right, x + w);
+    LONG bodyTop = std::max(display.top, y - padding), bodyBottom = std::min(display.bottom, y + h + padding);
+    LONG contentWidth = static_cast<LONG>(std::lround(sourceWidth * downScale * target.scale));
+    MovePreviewLayout layout;
+    layout.bounds = {bodyLeft, bodyTop, bodyRight, bodyBottom};
+    layout.body = {0, 0, bodyRight - bodyLeft, bodyBottom - bodyTop};
+    layout.content = {x - bodyLeft + (w - contentWidth) / 2, y - bodyTop,
+                      x - bodyLeft + (w + contentWidth) / 2, y + h - bodyTop};
+    layout.contentScale = downScale * target.scale;
+    return layout;
+}
+MovePreviewLayout CurrentMovePreviewLayout(const MoveEditorState& editor) {
+    MONITORINFO info{}; info.cbSize = sizeof(info);
+    GetMonitorInfoW(MonitorFromPoint(editor.target.origin, MONITOR_DEFAULTTONEAREST), &info);
+    return ResolveMovePreviewLayout(editor, info.rcMonitor);
+}
+Gdiplus::Color NativePreviewColor(Color color) { return {color.A, color.R, color.G, color.B}; }
+std::unique_ptr<Gdiplus::Font> MovePreviewFont(const PreviewText& text) {
+    auto name = text.font;
+    int style = text.weight >= 600 ? Gdiplus::FontStyleBold : Gdiplus::FontStyleRegular;
+    if (name == L"Segoe UI" && text.weight == 600) { name = L"Segoe UI Semibold"; style = Gdiplus::FontStyleRegular; }
+    auto font = std::make_unique<Gdiplus::Font>(name.c_str(), static_cast<float>(text.fontSize), style, Gdiplus::UnitPixel);
+    if (font->GetLastStatus() != Gdiplus::Ok)
+        font = std::make_unique<Gdiplus::Font>(L"Segoe UI", static_cast<float>(text.fontSize), style, Gdiplus::UnitPixel);
+    return font;
+}
+void RoundedPreviewPath(Gdiplus::GraphicsPath& path, RECT rect, float radius) {
+    float x = rect.left + .5f, y = rect.top + .5f;
+    float w = rect.right - rect.left - 1.f, h = rect.bottom - rect.top - 1.f;
+    float d = std::min({radius * 2, w, h});
+    path.AddArc(x, y, d, d, 180, 90); path.AddArc(x + w - d, y, d, d, 270, 90);
+    path.AddArc(x + w - d, y + h - d, d, d, 0, 90); path.AddArc(x, y + h - d, d, d, 90, 90);
+    path.CloseFigure();
+}
+bool PaintMovePreviewSurface(MoveEditorState& editor, const MovePreviewLayout& layout) {
+    if (!EnsurePreviewGraphics()) return false;
+    if (!editor.surface) editor.surface = std::make_shared<PreviewSurface>();
+    auto& surface = *editor.surface;
+    int width = layout.bounds.right - layout.bounds.left, height = layout.bounds.bottom - layout.bounds.top;
+    if (surface.width != width || surface.height != height) editor.dirty = true;
+    if (!EqualRect(&editor.renderedBody, &layout.body) || !EqualRect(&editor.renderedContent, &layout.content) ||
+        editor.renderedDpi != editor.target.scale) editor.dirty = true;
+    if (!surface.Resize(width, height)) return false;
+    if (!editor.dirty) return true;
+    Gdiplus::Bitmap bitmap(width, height, width * 4, PixelFormat32bppPARGB, reinterpret_cast<BYTE*>(surface.pixels));
+    Gdiplus::Graphics graphics(&bitmap);
+    graphics.Clear(Gdiplus::Color(0, 0, 0, 0));
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    graphics.SetTextRenderingHint(Gdiplus::TextRenderingHintAntiAliasGridFit);
+    bool light = editor.visual.light, contrast = editor.visual.highContrast;
+    bool valid = editor.candidate.width > 0;
+    float dpi = static_cast<float>(editor.target.scale);
+    Gdiplus::GraphicsPath body; RoundedPreviewPath(body, layout.body, 7 * dpi);
+    if (editor.dragging && contrast) {
+        Gdiplus::SolidBrush background(NativePreviewColor(ColorFromColorRef(GetSysColor(COLOR_WINDOW))));
+        graphics.FillPath(&background, &body);
+    } else if (editor.dragging) {
+        int emphasis = 24;
+        Gdiplus::LinearGradientBrush background(
+            Gdiplus::Point(layout.body.left, layout.body.top), Gdiplus::Point(layout.body.left, layout.body.bottom),
+            !valid ? Gdiplus::Color(210, light ? 255 : 78, light ? 233 : 34, light ? 233 : 43) :
+            light ? Gdiplus::Color(218 + emphasis, 253, 254, 255) : Gdiplus::Color(166 + emphasis, 52, 62, 82),
+            !valid ? Gdiplus::Color(225, light ? 247 : 56, light ? 211 : 23, light ? 214 : 31) :
+            light ? Gdiplus::Color(230 + emphasis, 230, 236, 245) : Gdiplus::Color(190 + emphasis, 25, 31, 44));
+        graphics.FillPath(&background, &body);
+    } else {
+        // A zero-alpha layered pixel lets clicks through before WM_NCHITTEST.
+        // Keep the whole edit surface grabbable without a visible glass fill.
+        Gdiplus::SolidBrush hitArea(Gdiplus::Color(1, 0, 0, 0));
+        graphics.FillPath(&hitArea, &body);
+    }
+    auto border = !valid ? Gdiplus::Color(255, 225, 83, 88) :
+        contrast ? NativePreviewColor(ColorFromColorRef(GetSysColor(COLOR_WINDOWTEXT))) :
+        light ? Gdiplus::Color(65, 82, 103, 139) : Gdiplus::Color(editor.dragging ? 110 : 65, 220, 232, 255);
+    Gdiplus::Pen edge(border, dpi); graphics.DrawPath(&edge, &body);
+    auto saved = graphics.Save();
+    graphics.TranslateTransform(static_cast<float>(layout.content.left), static_cast<float>(layout.content.top));
+    graphics.ScaleTransform(static_cast<float>(layout.contentScale), static_cast<float>(layout.contentScale));
+    graphics.SetClip(Gdiplus::RectF(0, 0, static_cast<float>(editor.visual.width), kWidgetHeight));
+    for (const auto& bar : editor.visual.bars) {
+        Gdiplus::SolidBrush brush(NativePreviewColor(bar.color));
+        graphics.FillRectangle(&brush, bar.bounds.X, bar.bounds.Y, bar.bounds.Width, bar.bounds.Height);
+    }
+    for (const auto& graph : editor.visual.graphs) {
+        Gdiplus::Pen pen(NativePreviewColor(graph.color), 1.25f);
+        pen.SetStartCap(Gdiplus::LineCapRound); pen.SetEndCap(Gdiplus::LineCapRound);
+        for (const auto& run : graph.runs) {
+            std::vector<Gdiplus::PointF> points;
+            for (const auto& point : run) points.emplace_back(graph.bounds.X + point.x, graph.bounds.Y + point.y);
+            if (points.size() > 1) graphics.DrawLines(&pen, points.data(), static_cast<int>(points.size()));
+        }
+    }
+    for (const auto& text : editor.visual.texts) {
+        auto font = MovePreviewFont(text);
+        Gdiplus::SolidBrush brush(NativePreviewColor(text.color));
+        Gdiplus::StringFormat format(Gdiplus::StringFormat::GenericTypographic());
+        format.SetFormatFlags(format.GetFormatFlags() | Gdiplus::StringFormatFlagsNoWrap);
+        format.SetAlignment(text.right ? Gdiplus::StringAlignmentFar : Gdiplus::StringAlignmentNear);
+        format.SetLineAlignment(Gdiplus::StringAlignmentCenter); format.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+        Gdiplus::RectF bounds(text.bounds.X, text.bounds.Y, text.bounds.Width, text.bounds.Height);
+        graphics.DrawString(text.text.c_str(), static_cast<int>(text.text.size()), font.get(), bounds, &format, &brush);
+    }
+    graphics.Restore(saved);
+    editor.renderedBody = layout.body; editor.renderedContent = layout.content;
+    editor.renderedDpi = editor.target.scale;
+    editor.dirty = false; return true;
+}
+void RefreshMovePreviewVisual() {
+    auto session = g_moveEditor;
+    if (!session || g_moveCommitting) return;
+    CaptureWidgetPreviewContext capture{session->visual};
+    if (OnPreviewSourceThread(session->source, CaptureWidgetPreview, &capture) &&
+        session == g_moveEditor && capture.changed) {
+        session->visual = std::move(capture.frame); session->dirty = true;
+    }
+}
+bool UploadMovePreviewSurface(HWND window, const MovePreviewLayout& layout, const PreviewSurface& surface) {
+    POINT destination{layout.bounds.left, layout.bounds.top}, origin{};
+    SIZE size{layout.bounds.right - layout.bounds.left, layout.bounds.bottom - layout.bounds.top};
+    BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+    return UpdateLayeredWindow(window, nullptr, &destination, &size, surface.dc,
+                               &origin, 0, &blend, ULW_ALPHA) != FALSE;
+}
+void RenderMovePreview() {
+    auto session = g_moveEditor;
+    if (!session || session->closing) return;
+    auto layout = CurrentMovePreviewLayout(*session);
+    auto rect = layout.bounds;
+    if (!PaintMovePreviewSurface(*session, layout)) {
+        Wh_Log(L"Cannot render the live move preview"); CancelMoveEditor(); return;
+    }
+    if (GetWindowLongPtrW(session->window, GWL_EXSTYLE) & WS_EX_LAYERED) {
+        if (!UploadMovePreviewSurface(session->window, layout, *session->surface)) {
+            Wh_Log(L"Updating live move preview failed: Win32 error %u", GetLastError()); CancelMoveEditor(); return;
+        }
+        ShowWindow(session->window, SW_SHOWNOACTIVATE);
+    } else { // Private test hosts use the same renderer through WM_PRINTCLIENT.
+        SetWindowPos(session->window, nullptr, 0, 0, rect.right - rect.left, rect.bottom - rect.top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+        InvalidateRect(session->window, nullptr, FALSE);
+    }
+}
+void UpdateMoveCandidate(TaskbarProjection target, double left) {
+    if (!g_moveEditor) return;
+    auto settings = CurrentSettings();
+    auto candidate = target.key.empty() ? TaskbarPlacement{} : ResolveTaskbarPlacement(
+        *settings, target.geometry, {left, g_moveEditor->candidate.left});
+    if ((candidate.width > 0) != (g_moveEditor->candidate.width > 0)) g_moveEditor->dirty = true;
+    g_moveEditor->target = std::move(target);
+    g_moveEditor->preferredLeft = left;
+    g_moveEditor->candidate = candidate;
+    RenderMovePreview();
+}
+void UpdateMoveCandidate(HWND window, double left) {
+    auto session = g_moveEditor;
+    auto target = ProjectTaskbar(window);
+    if (session && g_moveEditor == session) UpdateMoveCandidate(std::move(target), left);
+}
+void VerifyMovedWidget(void* value) {
+    auto& fits = *static_cast<bool*>(value);
+    if (!g_rootGrid || !g_widgetHost) return;
+    for (int i = 0; i < 3; ++i) {
+        g_rootGrid.UpdateLayout();
+        ++g_layoutRevision; RefreshTaskbarPlacement();
+    }
+    g_rootGrid.UpdateLayout();
+    auto geometry = MeasureTaskbarGeometry(g_rootGrid, g_taskItemsRepeater, 0, &g_geometryCache);
+    fits = geometry.ready && PlacementFits(geometry, {g_widgetHost.Margin().Left, g_widgetHost.Width(), 0}) &&
+           (g_reservedMargin == 0 || ReservedControlsFit(geometry));
+    if (fits) {
+        auto settings = CurrentSettings();
+        UpdateSparkline(g_cpuGraph, g_cpuHistory, *settings);
+        UpdateSparkline(g_gpuGraph, g_gpuHistory, *settings);
+    }
+}
+template <class Apply, class Verify, class Rollback>
+bool CompleteMoveTransaction(const PlacementProfiles& before, const PlacementProfiles& next,
+                             uint64_t epoch, Apply apply, Verify verify, Rollback rollback) {
+    g_moveCommitting = true;
+    struct Guard { ~Guard() { g_moveCommitting = false; } } guard;
+    bool saved = false;
+    try {
+        SetPlacementProfiles(next);
+        if (apply() && verify() && epoch == g_moveEpoch.load()) {
+            saved = SavePlacementProfiles(next);
+            if (saved && epoch == g_moveEpoch.load()) return true;
+        }
+    } catch (...) {
+        Wh_Log(L"Move transaction failed: %08X", static_cast<unsigned>(winrt::to_hresult()));
+    }
+    SetPlacementProfiles(before);
+    if (!rollback()) Wh_Log(L"Previous widget could not be restored immediately; placement retry is pending");
+    if (saved) SavePlacementProfiles(PlacementProfilesSnapshot());
+    return false;
+}
+bool CommitMoveEditor() {
+    if (!g_moveEditor || !g_moveEditor->candidate.width) return false;
+    auto epoch = g_moveEpoch.load();
+    auto editor = *g_moveEditor;
+    UpdateMoveCandidate(editor.target.window, editor.preferredLeft);
+    if (!g_moveEditor || !g_moveEditor->candidate.width) return false;
+    editor = *g_moveEditor;
+    auto before = PlacementProfilesSnapshot();
+    auto settings = CurrentSettings();
+    auto confirmed = ConfirmPlacementPreference(before, *settings, editor.target.key,
+        editor.candidate.left, editor.target.geometry.width, editor.reset);
+    if (!confirmed) {
+        Wh_Log(L"Cannot save this display position (missing identity or 32-profile limit); reset with Home first");
+        return false;
+    }
+    auto next = std::move(*confirmed);
+    HWND previousWindow = g_taskbarWindow.load();
+    bool succeeded = CompleteMoveTransaction(before, next, epoch, [&] {
+        return ApplyOnTaskbarThread(nullptr, true, editor.target.window);
+    }, [&] {
+        bool fits = false;
+        if (g_taskbarWindow.load() == editor.target.window)
+            RunFromWindowThread(editor.target.window, VerifyMovedWidget, &fits);
+        return fits;
+    }, [&] {
+        ReconcilePlacementSettings();
+        return ApplyOnTaskbarThread(nullptr, true,
+            epoch == g_moveEpoch.load() ? previousWindow : FindConfiguredTaskbarWindow());
+    });
+    if (!succeeded) {
+        Wh_Log(L"Move could not be applied; restored the preceding position preference");
+        if (epoch != g_moveEpoch.load()) CancelMoveEditor();
+        else if (g_moveEditor && g_moveEditor->sourceHidden) {
+            SourceWidgetOpacityContext opacity{g_moveEditor->source, true};
+            OnPreviewSourceThread(opacity.source, SetSourceWidgetOpacity, &opacity);
+        }
+    }
+    return succeeded;
+}
+void CancelMoveEditor() {
+    ++g_moveEpoch;
+    if (g_moveCommitting) return;
+    if (HWND window = g_moveEditorWindow.load()) SendMessageW(window, WM_CLOSE, 0, 0);
+}
+void UpdateDraggedCandidate(bool finalPoint = false) {
+    auto session = g_moveEditor;
+    if (!session || !session->dragging) return;
+    auto now = std::chrono::steady_clock::now();
+    if (!finalPoint && now - session->lastProbe < std::chrono::milliseconds(16)) return;
+    session->lastProbe = now;
+    POINT point; if (!GetPhysicalCursorPos(&point)) return;
+    HWND target = FindTaskbarWindowForMonitor(MonitorFromPoint(point, MONITOR_DEFAULTTONULL));
+    RECT bounds{};
+    if (!target || !GetWindowRect(target, &bounds) || !PtInRect(&bounds, point)) {
+        session->pointerOutside = true; session->candidate = {}; session->dirty = true;
+        RenderMovePreview(); return;
+    }
+    session->pointerOutside = false;
+    auto projection = ProjectTaskbar(target);
+    if (g_moveEditor != session) return;
+    double left = ScreenPointToPreferredLeft(projection, point, session->grabFraction, CurrentSettings()->width);
+    UpdateMoveCandidate(std::move(projection), left);
+}
+LRESULT CALLBACK MoveEditorProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    try {
+        ScopedPhysicalDpi physicalCoordinates;
+        if (message == WM_CLOSE) { DestroyWindow(window); return 0; }
+        if (message == WM_DESTROY) {
+            auto closing = g_moveEditor;
+            if (closing) closing->closing = true;
+            HWND previous = g_moveEditor ? g_moveEditor->previousForeground : nullptr;
+            bool restoreFocus = GetForegroundWindow() == window;
+            if (GetCapture() == window) ReleaseCapture();
+            KillTimer(window, 1); g_moveEditorWindow = nullptr;
+            if (closing && closing->sourceHidden) {
+                SourceWidgetOpacityContext opacity{closing->source, false, closing->sourceOpacity};
+                OnPreviewSourceThread(opacity.source, SetSourceWidgetOpacity, &opacity);
+            }
+            g_moveEditor.reset(); StopPreviewGraphics();
+            if (restoreFocus && IsWindow(previous)) SetForegroundWindow(previous);
+            return 0;
+        }
+        if (!g_moveEditor) return DefWindowProcW(window, message, wParam, lParam);
+        auto editorOwner = g_moveEditor;
+        auto& editor = *editorOwner;
+        if (message == WM_ERASEBKGND) return 1;
+        if (message == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT) {
+            SetCursor(LoadCursorW(nullptr, IDC_HAND)); return TRUE;
+        }
+        if (message == WM_NCHITTEST) {
+            POINT point{static_cast<short>(LOWORD(lParam)), static_cast<short>(HIWORD(lParam))};
+            ScreenToClient(window, &point);
+            auto layout = CurrentMovePreviewLayout(editor);
+            return PtInRect(&layout.body, point) ? HTCLIENT : HTTRANSPARENT;
+        }
+        if (message == WM_LBUTTONDOWN) {
+            auto layout = CurrentMovePreviewLayout(editor);
+            editor.grabFraction = std::clamp(static_cast<double>(static_cast<short>(LOWORD(lParam)) - layout.content.left) /
+                                             std::max<LONG>(1, layout.content.right - layout.content.left), 0.0, 1.0);
+            editor.dragging = true; editor.reset = false; editor.dirty = true;
+            SetCapture(window); RenderMovePreview(); return 0;
+        }
+        if (message == WM_LBUTTONUP || message == WM_CAPTURECHANGED) {
+            if (message == WM_LBUTTONUP) UpdateDraggedCandidate(true);
+            editor.dragging = false; editor.dirty = true;
+            if (GetCapture() == window) ReleaseCapture();
+            RenderMovePreview();
+            return 0;
+        }
+        if (message == WM_MOUSEMOVE) {
+            if (!editor.hovered) {
+                editor.hovered = true; editor.dirty = true;
+                TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE, window, 0}; TrackMouseEvent(&tracking);
+                RenderMovePreview();
+            }
+            if (editor.dragging) UpdateDraggedCandidate();
+            return 0;
+        }
+        if (message == WM_MOUSELEAVE) { editor.hovered = false; editor.dirty = true; RenderMovePreview(); return 0; }
+        if (message == WM_TIMER && wParam == 1) {
+            RefreshMovePreviewVisual();
+            if (g_moveEditor != editorOwner) return 0;
+            if (!editor.dragging && !editor.pointerOutside) UpdateMoveCandidate(editor.target.window, editor.preferredLeft);
+            else if (editor.dirty) RenderMovePreview();
+            return 0;
+        }
+        if (message == WM_KEYDOWN) {
+            if (wParam == VK_ESCAPE) { DestroyWindow(window); return 0; }
+            if (wParam == VK_RETURN) {
+                if (CommitMoveEditor()) DestroyWindow(window);
+                return 0;
+            }
+            if (wParam == VK_HOME) {
+                auto settings = CurrentSettings(); auto monitors = EnumerateDisplayMonitors();
+                HWND target = settings->monitor <= static_cast<int>(monitors.size())
+                    ? FindTaskbarWindowForMonitor(monitors[settings->monitor - 1].handle) : nullptr;
+                if (!target) target = FindPrimaryTaskbarWindow();
+                editor.reset = true; editor.pointerOutside = false; editor.dirty = true;
+                UpdateMoveCandidate(target, settings->leftOffset); return 0;
+            }
+        }
+        if (message == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE && !g_moveCommitting) {
+            DestroyWindow(window); return 0;
+        }
+        if (message == WM_PAINT || message == WM_PRINTCLIENT) {
+            PAINTSTRUCT paint{};
+            HDC dc = message == WM_PAINT ? BeginPaint(window, &paint) : reinterpret_cast<HDC>(wParam);
+            if (PaintMovePreviewSurface(editor, CurrentMovePreviewLayout(editor))) {
+                Gdiplus::Bitmap bitmap(editor.surface->width, editor.surface->height, editor.surface->width * 4,
+                    PixelFormat32bppPARGB, reinterpret_cast<BYTE*>(editor.surface->pixels));
+                Gdiplus::Graphics graphics(dc); graphics.DrawImage(&bitmap, 0, 0);
+            }
+            if (message == WM_PAINT) EndPaint(window, &paint);
+            return 0;
+        }
+    } catch (...) {
+        Wh_Log(L"Move editor failed: %08X", static_cast<unsigned>(winrt::to_hresult()));
+        DestroyWindow(window); return 0;
+    }
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+void BeginMoveEditor() {
+    ScopedPhysicalDpi physicalCoordinates;
+    if (g_moveEditorWindow) { CancelMoveEditor(); return; }
+    HWND target = g_taskbarWindow.load();
+    if (!IsCurrentProcessTaskbarWindow(target)) target = FindConfiguredTaskbarWindow();
+    auto projection = ProjectTaskbar(target);
+    if (!projection.geometry.ready || projection.key.empty()) {
+        Wh_Log(L"Move editor unavailable: taskbar geometry or stable display identity missing"); return;
+    }
+    WNDCLASSW cls{}; cls.hInstance = PlacementModule(); cls.lpfnWndProc = MoveEditorProc;
+    cls.lpszClassName = kMoveWindowClass; cls.hCursor = LoadCursorW(nullptr, IDC_HAND);
+    if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return;
+    auto settings = CurrentSettings();
+    MoveEditorState editor; editor.previousForeground = GetForegroundWindow(); editor.source = target;
+    editor.target = projection;
+    editor.preferredLeft = PreferredTaskbarLeft(target, projection.geometry.width, *settings);
+    editor.candidate = ResolveTaskbarPlacement(*settings, projection.geometry,
+                                              {editor.preferredLeft, editor.preferredLeft});
+    g_moveEditor = std::make_shared<MoveEditorState>(std::move(editor));
+    HWND window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
+        kMoveWindowClass, L"Taskbar System Info - Move", WS_POPUP, 0, 0, 1, 1,
+        nullptr, nullptr, cls.hInstance, nullptr);
+    if (!window) { g_moveEditor.reset(); return; }
+    g_moveEditor->window = window; g_moveEditorWindow = window;
+    RefreshMovePreviewVisual(); RenderMovePreview();
+    if (!g_moveEditor) return;
+    SourceWidgetOpacityContext opacity{target, true};
+    if (OnPreviewSourceThread(target, SetSourceWidgetOpacity, &opacity) && opacity.changed) {
+        g_moveEditor->sourceHidden = true; g_moveEditor->sourceOpacity = opacity.original;
+    }
+    SetForegroundWindow(window); SetFocus(window); SetTimer(window, 1, 150, nullptr);
+}
+std::wstring g_registeredMoveHotkey;
+bool g_hotkeyRegistered = false;
+std::atomic<bool> g_hotkeyRefreshPending{false};
+LRESULT CALLBACK PlacementControlProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == kGeometryMessage) {
+        g_geometryQueued = false;
+        if (!g_unloading && window == g_placementControlWindow) RefreshTaskbarPlacement();
+        return 0;
+    }
+    if (message == WM_HOTKEY && wParam == kMoveHotkeyId && !g_unloading) {
+        BeginMoveEditor(); return 0;
+    }
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+void QueueTaskbarPlacement() {
+    if (!g_unloading && !g_geometryQueued && g_placementControlWindow)
+        g_geometryQueued = PostMessageW(g_placementControlWindow, kGeometryMessage, 0, 0) != FALSE;
+}
+void EnsurePlacementControl(const ModSettings& settings) {
+    if (!g_placementControlWindow) {
+        WNDCLASSW cls{}; cls.hInstance = PlacementModule(); cls.lpfnWndProc = PlacementControlProc;
+        cls.lpszClassName = kPlacementWindowClass;
+        if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return;
+        g_placementControlWindow = CreateWindowExW(0, cls.lpszClassName, L"", 0, 0, 0, 0, 0,
+                                                  HWND_MESSAGE, nullptr, cls.hInstance, nullptr);
+        g_registeredMoveHotkey = L"\n";
+    }
+    if (!g_placementControlWindow) return;
+    bool retryRegistration = g_hotkeyRefreshPending.exchange(false);
+    if (!retryRegistration && g_registeredMoveHotkey == settings.moveHotkey) return;
+    if (g_hotkeyRegistered) UnregisterHotKey(g_placementControlWindow, kMoveHotkeyId);
+    g_hotkeyRegistered = false; g_registeredMoveHotkey = settings.moveHotkey;
+    std::wstring reason;
+    auto hotkey = ParseMoveHotkey(settings.moveHotkey, &reason);
+    if (!hotkey) { Wh_Log(L"Invalid moveHotkey '%s': %s", settings.moveHotkey.c_str(), reason.c_str()); return; }
+    if (!hotkey->key) return;
+    g_hotkeyRegistered = RegisterHotKey(g_placementControlWindow, kMoveHotkeyId,
+                                       hotkey->modifiers | MOD_NOREPEAT, hotkey->key) != FALSE;
+    if (!g_hotkeyRegistered) {
+        DWORD error = GetLastError();
+        Wh_Log(L"Cannot register moveHotkey '%s': %s (Win32 error %u)", settings.moveHotkey.c_str(),
+               error == ERROR_HOTKEY_ALREADY_REGISTERED ? L"Combination is already registered" : L"RegisterHotKey failed", error);
+    }
+}
+void RemovePlacementControl() {
+    if (!g_moveCommitting) CancelMoveEditor();
+    if (g_placementControlWindow) {
+        if (g_hotkeyRegistered) UnregisterHotKey(g_placementControlWindow, kMoveHotkeyId);
+        DestroyWindow(g_placementControlWindow); g_placementControlWindow = nullptr;
+    }
+    g_hotkeyRegistered = false; g_geometryQueued = false; g_registeredMoveHotkey.clear();
+    if (!g_moveEditorWindow) StopPreviewGraphics();
+    UnregisterClassW(kPlacementWindowClass, PlacementModule());
+    if (!g_moveEditorWindow) UnregisterClassW(kMoveWindowClass, PlacementModule());
 }
 
 void StartPlacementRetryWorker() {
@@ -5997,6 +7215,8 @@ BOOL Wh_ModInit() {
     }
 
     LoadSettings();
+    LoadPlacementProfiles();
+    ReconcilePlacementSettings();
 
     if (!HookTaskbarDllSymbols()) {
         Wh_Log(L"taskbar.dll symbols unavailable");
@@ -6041,7 +7261,10 @@ void Wh_ModAfterInit() {
 
 void Wh_ModSettingsChanged() {
     Wh_Log(L">");
+    CancelMoveEditor();
     LoadSettings();
+    g_hotkeyRefreshPending = true;
+    ReconcilePlacementSettings();
     WakeMetricsWorker();
     if (!ApplyOnTaskbarThread(nullptr, true)) {
         StartPlacementRetryWorker();
@@ -6051,6 +7274,7 @@ void Wh_ModSettingsChanged() {
 void Wh_ModBeforeUninit() {
     Wh_Log(L">");
     g_unloading = true;
+    CancelMoveEditor();
     StopPlacementRetryWorker();
     StopMetricsWorker();
 
