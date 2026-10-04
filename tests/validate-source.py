@@ -138,7 +138,7 @@ def main() -> int:
 
     expected = {
         "id": "taskbar-system-info",
-        "version": "1.5.2",
+        "version": "1.6.0",
         "author": "Yevhenii Starychenko",
         "github": "https://github.com/starychenko",
         "license": "GPL-3.0",
@@ -153,7 +153,7 @@ def main() -> int:
     assert metadata.get("description:uk-UA")
 
     settings = parse_settings(extract_block(source, "WindhawkModSettings"))
-    assert len(settings) == 28, f"Expected 28 settings, got {len(settings)}"
+    assert len(settings) == 29, f"Expected 29 settings, got {len(settings)}"
 
     setting_keys: set[str] = set()
     for index, item in enumerate(settings):
@@ -525,10 +525,10 @@ def main() -> int:
     assert "kMaximumUnknownPlacementProbeFailures" not in source
     assert "g_unknownPlacementProbesSuspended" not in source
     assert "FindAnyWindowOnTaskbarThread(targetWindow)" not in source
-    assert "FindReadyTaskbarFrame" in source
+    assert "IsReadyTaskbarFrame" in source
     assert "FrameworkElement FindTaskbarFrame(HWND taskbarWindow)" in source
     assert source.count('winrt::get_class_name(child) == L"Taskbar.TaskbarFrame"') == 1
-    assert "ApplyWidgetToTaskbarWindow(targetWindow, targetFrame)" in source
+    assert "ApplyWidgetToTaskbarWindow(targetWindow)" in source
     assert "ApplyOnTaskbarThread(nullptr, false, targetWindow)" in source
 
     timer_management = source[
@@ -728,6 +728,8 @@ def main() -> int:
     assert "g_rootGrid.SizeChanged(g_rootSizeChangedToken)" in remove_widget
     assert "g_widgetHost = nullptr" in remove_widget
     assert "-lcomctl32" in build_script
+    assert "-lgdi32" in build_script
+    assert "-lgdiplus" in build_script
     assert "Get-Content -LiteralPath $sourcePath -Raw -Encoding utf8" in build_script
 
     print(

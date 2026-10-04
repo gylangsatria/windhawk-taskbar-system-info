@@ -1,340 +1,326 @@
 # Taskbar System Info
 
-A compact, click-through system monitor for the far-left free area of the
-Windows 11 taskbar. It is designed for a quick administrator glance: current
-values show what is happening now, while two restrained history traces reveal
-whether a CPU or GPU spike is momentary or sustained.
+CPU, GPU, RAM and VRAM on the Windows 11 taskbar. Usage, temperatures and
+history graphs stay in one small widget, so you can check them without opening
+another window.
 
-![Taskbar System Info preview](assets/taskbar-system-info.png)
+![Dark theme with sample CPU, GPU, RAM and VRAM readings](assets/widget-dark.png)
 
-```text
-CPU  10%  72°C  [60-second graph]    RAM   52%  16.7/32G
-GPU   4%  56°C  [60-second graph]    VRAM   9%   2.1/24G
-```
+The images in this page are renders of the current widget and move mode with
+sample readings. They show the layout and states, not a live Explorer session.
 
-The fixed two-column layout keeps every metric in a predictable place. CPU and
-GPU history uses a fixed 0-100% scale. RAM and VRAM use thin capacity bars.
-Fixed-width fields prevent the layout from shifting as values change. Normal
-values remain monochrome; only warning and critical readings receive color.
-Adaptive colors are enabled by default: normal text follows the native taskbar
-foreground, while graphs and alerts switch automatically between contrasting
-light and dark palettes. Windows high-contrast mode uses its system highlight
-colors instead of the custom palette. Disable the adaptive option to use the
-manual color settings exactly.
+The widget shows CPU and GPU usage, their temperatures, and a history graph for
+each. RAM and VRAM show the percentage, used/total capacity and a thin usage bar.
+Values stay in fixed columns as the readings change. CPU/GPU fields are compact,
+with six logical pixels of padding on each side of the widget.
 
-Network and disk activity are intentionally not collected.
+Normal readings use the taskbar text color. Temperature and memory alerts add
+color when a threshold is reached. Light, dark and Windows high-contrast themes
+are supported. You can also set the fonts, colors, opacity and alert thresholds.
 
-Unlike the performance placeholders in
-[Taskbar Clock Customization](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-clock-customization.wh.cpp),
-this mod does not alter the clock. It uses the free far-left taskbar area for a
-stable 2x2 dashboard with rolling graphs, capacity bars, temperature alerts and
-fixed-width values.
+In normal use, clicks pass through to the taskbar. Press **Ctrl+Alt+M** when you
+want to move the widget. It stays live, gets a hand cursor and a translucent
+background only while dragging, and snaps to a usable place. A red frame means the position cannot be
+saved. **Enter** saves it, **Esc** cancels it.
 
 ## Quick start
 
-1. Install and enable the mod. CPU, GPU, RAM and VRAM normally work without any
-   additional software.
-2. Keep **Temperature source** set to **Automatic**. The mod first tries
-   HWiNFO, then the temperature interfaces exposed by Windows and the display
-   driver.
-3. If a temperature remains `--°C`, Windows probably does not expose that
-   sensor. Install HWiNFO64 and configure either Shared Memory or Gadget
-   Registry as described below.
-4. If the widget overlaps the Start button, enable **Reserve space before the
-   Start button**. If it overlaps Widgets/weather, increase **Left offset** or
-   disable the conflicting taskbar element.
-5. On a multi-monitor system, select **Taskbar monitor**. Monitor 1 is always
-   the primary display; the numbering of other displays is explained below.
+1. Install and enable the mod. CPU, GPU, RAM and VRAM usually work without
+   additional software. See [Install](#install) for the current source.
+2. Leave **Temperature source** on **Automatic**. If a temperature stays at
+   `--°C`, check [Setting up HWiNFO temperatures](#setting-up-hwinfo-temperatures).
+3. Press **Ctrl+Alt+M**, drag the widget along the taskbar, then press **Enter**.
+   You can drag onto another monitor's taskbar too. **Esc** keeps the old position.
+4. If you want space before Start, enable **Reserve space before the Start button**.
+   The mod only shifts the button group when the measured controls still fit.
+5. Set **Taskbar monitor** and **Left offset** if you prefer to use settings.
+   Monitor 1 is the primary display. Changing the monitor setting overrides the
+   display selected by dragging.
 
-The mod is read-only: it does not control clocks, fans, power limits or GPU
-settings. It does not collect network/disk activity and does not send telemetry
-or make internet requests.
+## Screenshots
 
-## Metrics
+These use the same XAML widget and native move renderer as the mod. The larger
+text example shows 100% and 100°C at font size 13 and 200% display scale.
 
-- CPU utilization from the Windows Processor Utility counter, matching the
-  frequency-aware Task Manager value when available. `GetSystemTimes` remains
-  the compatibility fallback.
-- RAM usage and capacity from `GlobalMemoryStatusEx`.
-- GPU utilization from Windows PDH GPU engine counters.
-- Dedicated or shared GPU-memory usage from Windows PDH counters.
-- GPU-memory capacity and adapter identity from live D3DKMT enumeration, with
-  DXGI as a compatibility fallback. Automatic mode uses shared GPU memory for
-  integrated adapters, including the common small dedicated carve-out case,
-  and dedicated VRAM for discrete adapters. The memory type can also be forced
-  in settings for unusual drivers.
-- CPU and GPU temperatures from HWiNFO when available.
-- GPU fallback from the Windows display-driver interface (D3DKMT).
-- CPU fallback from Windows ACPI thermal zones exposed through PDH.
+| Light theme | Compact width, 330 logical pixels |
+| --- | --- |
+| ![Light theme](assets/widget-light.png) | ![Compact widget](assets/widget-compact.png) |
 
-Metric collection runs on a worker thread. CPU and GPU performance counters
-use separate queries, so GPU recovery does not reset the CPU thermal-zone
-counter. The UI consumes completed snapshots; new samples and Windows
-theme/display-change notifications trigger updates. A fallback UI timer follows
-the configured update interval.
+| Moving the live widget | No readable space at the chosen position |
+| --- | --- |
+| ![Live readings during dragging](assets/widget-move.png) | ![Red frame for an invalid position](assets/widget-move-invalid.png) |
 
-Native GPU-temperature failures are isolated from adapter selection and the
-GPU/VRAM counters. Unsupported queries and missing/invalid temperature readings
-are retried once per minute; other failures back off from 5 to 60 seconds.
-The next probe uses a fresh temperature handle, so recovery also works when a
-driver replacement keeps the same adapter LUID. A new LUID or a settings reload
-clears the temperature retry delay. Unavailable readings remain `--°C`; an old
-temperature is not displayed as a current measurement.
+| Larger text at 200% scale | Windows high-contrast colors |
+| --- | --- |
+| ![Large text at 200 percent scale](assets/widget-large-text.png) | ![High-contrast move frame](assets/widget-high-contrast.png) |
 
-Graphs use measurement timestamps and a fixed 0-100% scale. A missing sample
-or collection stall leaves a gap instead of erasing earlier history or drawing
-a line through unknown data. The collector uses deadlines rather than adding
-its own collection time to every interval. Its bounded queue retains the latest
-256 samples if the UI is temporarily busy.
+Unavailable readings stay visible as `--`. A graph leaves a gap when there is
+no valid sample.
 
-A changed adapter LUID rebuilds the GPU query during the normal adapter
-refresh (up to 60 seconds). Three consecutive hard PDH errors can also trigger
-recovery, with a 60-second cooldown. If GPU-memory readings disappear while the
-LUID stays unchanged, an independent memory query checks whether the old query
-is stale. Only a working fresh reading triggers a rebuild; an unavailable or
-parked GPU is not repeatedly reset. Fresh probes run at most once per minute.
-CPU and RAM remain visible while a new GPU query establishes its rate baseline.
-When both engine and memory readings are missing, GPU shows `--%`, not a
-made-up zero. A working memory reading with no engine instances can show idle
-0%. This is recovery from recognized counter failures, not a guarantee that
-every driver fault can be repaired without reloading the mod.
+![Unavailable readings](assets/widget-unavailable.png)
 
-The adapter with the most dedicated VRAM is selected automatically. A partial
-adapter-name filter is available for multi-GPU systems. GPU usage and VRAM are
-matched to the selected live adapter by LUID. Duplicate stale adapters without
-a driver name are ignored when a named adapter with the same capacity exists.
-For an integrated GPU, the displayed capacity is the Windows shared-memory
-limit rather than a physically reserved memory pool, so its percentage has
-different semantics from a discrete GPU's dedicated VRAM. Capacities below
-1 GiB and fractional totals below 4 GiB retain one decimal place.
+## Moving and saved positions
 
-## Temperature providers
+Press **Ctrl+Alt+M** to enter move mode. Grab the widget with the hand cursor and
+drag it where you need it. The readings and graphs keep updating while you move.
+The original widget is hidden during editing and returns when you cancel.
+The normal widget has no glass background. Glass appears only while you hold the
+mouse button and drag. After release, the background clears and a thin outline
+marks the pending position until Enter or Esc. Hover alone does not add glass.
 
-The **Temperature source** setting provides these modes:
+The frame snaps to the nearest place that can fit a readable widget. If there
+is no usable place, it turns red. Releasing the mouse keeps the preview there,
+so you can check the position before saving it.
 
-- **Automatic** fills CPU and GPU independently: HWiNFO Shared Memory first,
-  then HWiNFO Gadget Registry, then Windows D3DKMT for a still-missing GPU
-  reading and Windows thermal zones for a still-missing CPU reading.
-- **HWiNFO automatic** uses only the two HWiNFO interfaces.
-- **HWiNFO Shared Memory** uses only `Global\HWiNFO_SENS_SM2`.
-- **HWiNFO Gadget Registry** uses only
-  `HKCU\Software\HWiNFO64\VSB`.
-- **Windows native** reads GPU temperature from the selected display driver via
-  D3DKMT and CPU temperature from the Windows
-  `\Thermal Zone Information(*)\Temperature` PDH counter. It needs no
-  third-party monitor.
-- **Disabled** skips temperature collection while keeping every other metric.
+| Key | What it does |
+| --- | --- |
+| **Enter** | Checks the current taskbar layout again and saves a valid position. A red position cannot be applied. |
+| **Esc** | Cancels editing and keeps the previous position. |
+| **Home** | Prepares a return to **Taskbar monitor** and **Left offset**. Press Enter to confirm or Esc to cancel. |
 
-Windows thermal zones are ACPI platform zones. Depending on the firmware they
-can represent a motherboard, chassis, skin, or processor-related zone rather
-than the CPU package itself. The optional instance-name filter selects specific
-zones. The aggregation setting defaults to the average used by Taskbar Clock
-Customization; **Hottest** is available for alert-oriented monitoring. Systems
-that don't expose thermal zones simply fall through without blocking other
-metrics.
+Clicking another application, changing settings, changing the display setup or
+unloading the mod also cancels editing. The widget and reserved button space
+move only after confirmation. A failed move or storage write keeps the previous
+saved position.
 
-HWiNFO is optional and is not bundled with this mod.
+You can change **Move widget hotkey**. It accepts Ctrl, Alt, Shift or Win with
+one letter, digit or F1-F24. Leave it empty to disable the shortcut. An invalid
+or already registered shortcut is not registered; the Windhawk log gives the
+reason.
 
-Shared-memory integration targets HWiNFO 7.0 or newer, which permits full
-disclosure of the interface. The free HWiNFO64 edition disables shared memory
-after 12 hours of continuous use; HWiNFO64 Pro has no such limit. Temperature
-units are classified from HWiNFO's raw unit bytes, independently of the Windows
-ANSI code page.
+Positions are saved separately for each display in Windhawk's local mod storage.
+The display is identified by its device path, so its Windows display number can
+change without replacing the saved target. The horizontal position is stored
+as a fraction of the available travel width.
 
-Gadget Registry is a separate HWiNFO interface. Enable **Report to Gadget**
-under **Sensor Settings > HWiNFO Gadget**. HWiNFO and Explorer must run under
-the same Windows user. The automatic sensor matcher prefers:
+Before the first confirmed drag, **Taskbar monitor** and **Left offset** choose
+the target. Changing **Taskbar monitor** restores the display choice from settings.
+Changing **Left offset** clears the dragged position for the current display.
+Other settings keep the saved positions. **Home**, then **Enter**, clears all
+positions saved by dragging and returns control to the monitor/offset settings.
 
-- CPU: `CPU (Tctl/Tdie)`, `CPU Die (average)`, or `CPU Package`.
-- GPU: `GPU Temperature`.
+If the selected display disconnects, the widget temporarily uses the primary
+taskbar. Its saved profile stays intact. When the display returns, the widget
+returns to it too.
 
-Partial HWiNFO sensor-name filters are available in the mod settings. When
-Windows adapter identity is available, automatic GPU sensor selection also
-matches the HWiNFO sensor name to that adapter. If Windows adapter enumeration
-has never been available and no adapter filter is configured, HWiNFO falls back
-to its generic GPU-temperature match; on multi-GPU systems, set the adapter and
-sensor filters explicitly.
+## Placement and spacing
 
-If the selected source is unavailable, temperatures are shown as `--°C`; CPU,
-GPU, RAM, and VRAM monitoring continues to work. The active CPU and GPU
-providers are logged only when they change. If automatic GPU matching finds
-temperature readings but none match the selected Windows adapter, the log
-explains that the sensor-name filter is the escape hatch.
+Placement uses the visible hit areas of Start, Search, Task View, Widgets/weather,
+app buttons, overflow, the tray and clock. An empty or stretched background
+container does not count as occupied space. Other bounded XAML buttons can also
+be included in the map.
 
-Cached HWiNFO readings are checked against sensor/instance/reading IDs in
-Shared Memory, or exact Sensor/Label pairs in Gadget Registry. Reordered
-records trigger reselection in the same sample. Partial discovery retries
-quickly for a short window, then returns to the normal scan interval (60 seconds
-for Shared Memory, 30 seconds for Registry). Registry discovery enumerates
-actual SensorN entries, including sparse numbering. Invalid shared-memory layouts
-are rejected and logged once until a valid layout returns.
+The widget keeps at least six logical pixels clear of mapped controls and the
+taskbar edges. It also has six logical pixels of inner side padding. These gaps
+scale with the display, so the widget does not sit against the next button.
 
-Short provider timeouts are shown as unavailable unless another configured
-provider can supply the reading. Old temperatures are not silently held over
-as if they were current. Registry decimals and displayed numbers are independent
-of Explorer's numeric locale.
+The nearest place for the full width is preferred. If there is no full-width
+place, the widget can shrink, keeping at least 85% scale and main text of at
+least 9 logical pixels. If that still cannot fit, it hides. When space returns,
+it restores the preferred position and full width. Automatic movement or shrinking
+does not overwrite the position you chose.
 
-## Setting up HWiNFO temperatures
+**Reserve space before the Start button** adds a placement option before the
+Start/app group. Existing margins are kept. If the arranged buttons would
+collide with another mapped element, the reservation is undone and the mod uses
+a free gap. **Reserved space gap** defaults to 8 logical pixels, with an effective
+minimum of 6. The mod does not reorder individual app buttons.
 
-You only need HWiNFO when Windows cannot provide the temperatures you want or
-when you prefer HWiNFO's CPU package sensor. HWiNFO must be running while the
-mod reads it. Running HWiNFO in **Sensors-only** mode is sufficient.
+Left and centered taskbar alignment use the same placement map. Separately drawn
+items or windows from another taskbar mod may need manual positioning or a
+compatibility fix. A particular Taskbar Styler preset still needs a live check.
 
-### Option A: HWiNFO Shared Memory
+## Metrics and alerts
 
-This is the easiest option and exposes the complete sensor table:
+- CPU usage comes from Windows Processor Utility when available, with
+  `GetSystemTimes` as the fallback.
+- GPU usage and memory usage come from Windows performance counters. Adapter
+  identity and memory capacity come from D3DKMT, with DXGI as the fallback.
+- RAM usage and capacity come from Windows memory status.
+- Temperatures come from HWiNFO or the Windows/driver interfaces listed below.
 
-1. Open HWiNFO **Settings**.
-2. On **General / User Interface**, enable **Shared Memory Support**.
-3. Start or reopen the HWiNFO Sensors window.
-4. Leave the mod on **Automatic**, or select **HWiNFO Shared Memory** if you
-   want to use only this interface.
+CPU and GPU graphs use a fixed 0-100% scale. History defaults to 60 seconds and
+can be set from 15 to 180 seconds. Readings default to a one-second interval;
+the supported range is 1-10 seconds. Missing samples leave gaps instead of
+joining unknown readings. Memory capacities use GiB, shown as `G` in the widget.
+Small or fractional totals keep one decimal place.
 
-The free HWiNFO64 edition turns Shared Memory Support off after 12 hours of
-continuous operation. This is an HWiNFO limitation, not a mod timer. When it
-happens, restart/re-enable the HWiNFO feature, use Gadget Registry, allow the
-Windows-native fallback, or use HWiNFO64 Pro. The mod does not bypass this
-limitation.
-
-### Option B: HWiNFO Gadget Registry
-
-This interface is useful when Shared Memory is unavailable:
-
-1. Open the HWiNFO **Sensors** window and its **Sensor Settings** dialog.
-2. Open the **HWiNFO Gadget** tab.
-3. Enable **Report to Gadget** for the CPU and GPU temperature readings you
-   want to expose.
-4. Keep HWiNFO and Explorer/Windhawk running under the same Windows user.
-5. Leave the mod on **Automatic**, or select **HWiNFO Gadget Registry** to use
-   only this interface.
-
-If automatic selection chooses the wrong reading, enter a distinctive part of
-the HWiNFO sensor name in **CPU temperature sensor filter** or **GPU temperature
-sensor filter**. Filters are normally unnecessary and should be left empty
-until there is an actual mismatch.
-
-## Default alerts
-
-| Metric | Warning | Critical |
+| Reading | Warning | Critical |
 | --- | ---: | ---: |
 | CPU temperature | 75°C | 85°C |
 | GPU temperature | 80°C | 90°C |
 | RAM and VRAM | 80% | 90% |
 
-Alerts use a small release margin to avoid flickering around a threshold. CPU
-and GPU utilization stays in the normal text color because brief 100% spikes
-are not automatically a problem.
+A small release margin stops alerts flickering around a threshold. CPU and GPU
+usage stays in the normal text color, including short 100% spikes.
+
+The GPU with the most dedicated VRAM is selected by default. Use **GPU adapter
+filter** for another card. Usage, memory and native GPU temperature are matched
+to the selected live adapter.
+
+**GPU memory type** normally stays on **Automatic**. Integrated GPUs use the
+Windows shared-memory limit; discrete GPUs use dedicated VRAM. Shared memory is
+backed by system RAM and is not a fixed VRAM chip capacity. If a driver or an
+older low-memory card is detected incorrectly, set the memory type explicitly.
+
+The mod reads system information. It does not control clocks, fans, power limits
+or GPU settings. It does not collect network/disk activity, send telemetry or
+make internet requests.
+
+## Temperature providers
+
+**Automatic** fills CPU and GPU temperatures separately. It tries HWiNFO Shared
+Memory, then HWiNFO Gadget Registry, then the Windows fallback for any temperature
+that is still missing.
+
+| Temperature source | What it reads |
+| --- | --- |
+| **Automatic** | HWiNFO first, then Windows/driver readings for missing temperatures. |
+| **HWiNFO automatic** | Shared Memory, then Gadget Registry. |
+| **HWiNFO Shared Memory** | `Global\HWiNFO_SENS_SM2` only. The shared-memory interface targets HWiNFO 7.0 or newer. |
+| **HWiNFO Gadget Registry** | `HKCU\Software\HWiNFO64\VSB` only. HWiNFO and Explorer must use the same Windows user. |
+| **Windows native** | GPU temperature from the selected display driver through D3DKMT; CPU fallback from Windows ACPI thermal zones through PDH. |
+| **Disabled** | Skips temperature collection. Usage, memory and graphs keep working. |
+
+Windows thermal zones can describe a motherboard, chassis, skin or
+processor-related sensor. They are not always the CPU package temperature.
+**Windows thermal zone filter** selects matching zone names. **Windows thermal
+zone aggregation** uses their average by default, or the hottest zone if selected.
+The Windows CPU fallback stays unavailable if the system exposes no thermal zones.
+
+HWiNFO is optional and is not bundled with the mod. Automatic CPU matching
+prefers `CPU (Tctl/Tdie)`, `CPU Die (average)` or `CPU Package`; GPU matching
+prefers `GPU Temperature` for the selected adapter. On a multi-GPU system, use
+the adapter and temperature filters if automatic matching picks the wrong sensor.
+If Windows has never supplied an adapter identity and no adapter filter is set,
+HWiNFO uses its generic GPU-temperature match.
+
+An unavailable reading shows `--°C`. An old temperature is not kept as a current
+reading. One missing provider does not stop the other metrics.
+
+## Setting up HWiNFO temperatures
+
+Use HWiNFO when Windows cannot supply the temperature you want, or when you want
+its CPU package sensor. Keep HWiNFO running. **Sensors-only** mode is enough.
+
+### Shared Memory
+
+1. Open HWiNFO **Settings**.
+2. Under **General / User Interface**, enable **Shared Memory Support**.
+3. Start or reopen the Sensors window.
+4. Keep the mod on **Automatic**, or select **HWiNFO Shared Memory** to use only
+   that interface.
+
+The non-Pro HWiNFO64/ARM64 edition disables Shared Memory after 12 hours of
+continuous use. Re-enable it manually, use Gadget Registry, allow the Windows
+fallback, or use Pro. This limit belongs to HWiNFO; the mod does not bypass it.
+See [HWiNFO's license comparison](https://www.hwinfo.com/licenses/).
+
+### Gadget Registry
+
+1. Open the Sensors window and **Sensor Settings**.
+2. Open the **HWiNFO Gadget** tab and enable gadget reporting.
+3. Mark the CPU and GPU temperature readings for **Report to Gadget** reporting
+   (the sensor checkbox may be labelled **Report value in Gadget**).
+4. Run HWiNFO and Explorer under the same Windows user.
+5. Keep the mod on **Automatic**, or select **HWiNFO Gadget Registry**.
+
+The [HWiNFO author's setup note](https://www.hwinfo.com/forum/threads/hwinfomonitor-version-confusion.9300/)
+explains the Gadget tab and the registry location. If the wrong sensor is chosen,
+set **CPU temperature sensor filter** or **GPU temperature sensor filter** to a
+distinctive part of its HWiNFO name. Otherwise, leave the filters empty.
 
 ## Settings reference
 
-### Layout and placement
+### Layout and sampling
 
-| Setting | What it controls |
+| Setting | What to change |
 | --- | --- |
-| **Widget width** | Total width of the two-column block. Increase it if values are clipped; decrease it when taskbar space is limited. |
-| **Left offset** | Requested nonnegative distance in logical pixels from the selected taskbar's left edge. Limited to the available width before the tray; Reserve space also preserves button width. The requested offset returns when the panel expands. |
-| **Taskbar monitor** | Taskbar that receives the widget. Monitor 1 is the primary display. An unavailable selection temporarily falls back to the primary taskbar. |
-| **Reserve space before the Start button** | Adds left margin to the taskbar button area so left-aligned buttons do not overlap the widget. Usually unnecessary with centered buttons. |
-| **Reserved space gap** | Extra empty space between the reserved widget area and the first taskbar button. |
-
-### Sampling and graphs
-
-| Setting | What it controls |
-| --- | --- |
-| **Update interval** | How often metrics are collected. One second gives the most useful quick-monitoring view; a longer interval reduces wakeups. |
-| **Graph history** | Number of seconds represented by the CPU and GPU graphs. The graphs use a fixed 0-100% scale. |
+| **Widget width** | Total width, including side padding. Range: 330-800 logical pixels; default: 410. Wider fonts may need more space. |
+| **Left offset** | Preferred horizontal position before dragging. Nonnegative logical pixels; default: 10. |
+| **Taskbar monitor** | Initial display, range 1-32. Monitor 1 is primary; the rest follow their position in the virtual desktop and may differ from Windows numbering. |
+| **Move widget hotkey** | Default: `Ctrl+Alt+M`. Empty disables it. |
+| **Reserve space before the Start button** | Allows the button group to shift when a safe reservation fits. Off by default. |
+| **Reserved space gap** | Gap after a reservation. Range: 0-100 logical pixels; default: 8; effective minimum: 6. |
+| **Update interval** | Collection interval, 1-10 seconds; default: 1. |
+| **Graph history** | CPU/GPU history, 15-180 seconds; default: 60. |
 
 ### Appearance
 
-| Setting | What it controls |
+| Setting | What to change |
 | --- | --- |
-| **Font size / Font family** | Text appearance. Keep a compact font and supported size to avoid clipping. |
-| **Adapt colors to the taskbar theme** | Recommended. Automatically follows light, dark and Windows high-contrast themes. |
-| **Text color** | Manual normal-text color. Used only when adaptive colors are disabled; empty means the system color. |
-| **Graph and bar color** | Manual CPU/GPU graph and RAM/VRAM bar color. |
-| **Warning / Critical color** | Manual alert colors used after a configured threshold is crossed. |
-| **Text opacity** | Opacity of values; labels are intentionally slightly quieter. High-contrast mode keeps important content fully visible. |
+| **Font size** | Range: 9-13 logical pixels; default: 11. |
+| **Font family** | Default: Segoe UI Variable Text. Keep a compact font or increase the widget width. |
+| **Adapt colors to the taskbar theme** | On by default. Follows light, dark and Windows high-contrast colors. |
+| **Text color** | Manual text color when adaptive colors are off. Empty uses the system color. |
+| **Graph and bar color** | Manual color for CPU/GPU graphs and RAM/VRAM bars. |
+| **Warning color** | Manual color for warning readings. |
+| **Critical color** | Manual color for critical readings. |
+| **Text opacity** | Default: 96%. Labels are slightly dimmer; high contrast keeps important content fully visible. |
 
-### Alerts
+### Alerts and sensors
 
-The four temperature thresholds control CPU/GPU warning and critical colors.
-The two memory thresholds apply to both RAM and VRAM percentages. A critical
-threshold is automatically kept above its warning threshold.
-
-### GPU selection and memory
-
-| Setting | What it controls |
+| Setting | What to change |
 | --- | --- |
-| **GPU adapter filter** | Optional partial Windows adapter name for multi-GPU systems. Empty selects the adapter with the most dedicated VRAM. |
-| **GPU memory type** | **Automatic** uses shared memory for an integrated GPU and dedicated VRAM for a discrete GPU. Force a mode only when a driver reports the adapter incorrectly. |
+| **CPU temperature warning** | Default: 75°C. |
+| **CPU critical temperature** | Default: 85°C. |
+| **GPU temperature warning** | Default: 80°C. |
+| **GPU critical temperature** | Default: 90°C. |
+| **Memory usage warning** | RAM/VRAM warning; default: 80%. |
+| **Critical memory usage** | RAM/VRAM critical level; default: 90%. |
+| **GPU adapter filter** | Partial Windows adapter name. Empty selects the GPU with the most dedicated VRAM. |
+| **GPU memory type** | Automatic, Dedicated VRAM or Shared GPU memory. |
+| **Temperature source** | The provider modes listed above; default: Automatic. |
+| **Windows thermal zone filter** | Partial zone name for the Windows CPU fallback. |
+| **Windows thermal zone aggregation** | Average or Hottest; default: Average. |
+| **CPU temperature sensor filter** | Partial HWiNFO CPU sensor name. |
+| **GPU temperature sensor filter** | Partial HWiNFO GPU sensor name. |
 
-Shared GPU memory is a Windows allocation limit backed by system RAM, not a
-fixed VRAM chip capacity. Its percentage is therefore not directly comparable
-to dedicated VRAM usage on a discrete card.
-
-### Temperature settings
-
-| Setting | What it controls |
-| --- | --- |
-| **Temperature source** | Selects Automatic, HWiNFO-only, Windows-native or Disabled behavior. Automatic is recommended. |
-| **Windows thermal zone filter** | Optional partial ACPI/PDH instance name. Only affects the Windows-native CPU fallback. |
-| **Windows thermal zone aggregation** | Uses the average of matching zones or the hottest zone. Firmware zones do not always represent the CPU package. |
-| **CPU/GPU temperature sensor filter** | Optional partial HWiNFO sensor name. Leave empty for automatic selection. |
+Manual text, graph and alert colors apply when adaptive colors are off. A critical
+threshold is kept above its warning threshold. Alerts only change the display.
 
 ## Troubleshooting
 
-| Symptom | What to check |
+| What you see | What to check |
 | --- | --- |
-| CPU or GPU temperature is `--°C` | Windows may not expose that sensor. Use Automatic mode, then configure HWiNFO Shared Memory or Gadget Registry. Confirm HWiNFO is running. |
-| HWiNFO worked and stopped after about 12 hours | The free HWiNFO64 Shared Memory period expired. Re-enable/restart it, configure Gadget Registry, use Windows-native fallback, or use HWiNFO64 Pro. |
-| GPU temperature belongs to another card | Set **GPU adapter filter** first. If needed, also set **GPU temperature sensor filter** to the matching HWiNFO sensor. |
-| VRAM is `--` after a driver update | Allow up to one minute for adapter refresh or a fresh-query probe, plus a few priming samples. Check the Windhawk log. Reload the mod if Windows still cannot supply valid readings. |
-| Integrated-GPU memory looks unexpectedly large | Automatic mode shows the Windows shared-memory limit. Select **Dedicated VRAM** only if you intentionally want the small reserved carve-out. |
-| Discrete 512 MB GPU is shown as shared memory | Force **Dedicated VRAM**. The automatic memory-shape signal cannot always distinguish a legacy low-memory discrete card from an integrated carve-out. |
-| Widget is missing or on the wrong taskbar | Verify **Taskbar monitor**, width and offset. Disconnecting a selected display temporarily moves the widget to the primary taskbar. Reload the mod after a major Explorer/taskbar update. |
-| Widget overlaps Start, Widgets or another mod | Adjust **Left offset**, enable **Reserve space**, or disable the taskbar element using the same area. |
+| Temperature stays at `--°C` | Windows may not expose that sensor. Configure HWiNFO and confirm it is running. Leave Automatic mode on. |
+| HWiNFO stops after about 12 hours | Re-enable Shared Memory, use Gadget Registry or let Automatic use Windows readings. |
+| GPU temperature belongs to another card | Set GPU adapter filter, then GPU temperature sensor filter if needed. |
+| GPU or VRAM stays at `--` after a driver update | Allow up to one minute for adapter refresh or a fresh-counter probe, plus a few samples to establish a baseline. Check the Windhawk log; reload the mod if Windows still supplies no valid readings. |
+| Integrated-GPU memory looks too large | Automatic shows the Windows shared-memory limit. Select Dedicated VRAM only if you want the reserved carve-out. |
+| An old 512 MB discrete card is shown as shared | Set GPU memory type to Dedicated VRAM. Automatic detection can mistake an old low-memory card for an integrated GPU. |
+| The widget is hidden | The available gap must fit the readability limits and side clearance. Check width, font and the Windhawk log. Try another position or Reserve space. |
+| The widget is on the wrong display | Check Taskbar monitor or drag it to the required taskbar. Home, then Enter, clears positions saved by dragging. |
+| The hotkey does nothing | Check Move widget hotkey and the log. Choose another combination if it is invalid or already registered. |
+| The move frame turns red | The target has no ready taskbar or no readable space. Move to a usable area before pressing Enter. |
+| Another taskbar mod overlaps it | Only discoverable XAML bounds are mapped. Custom drawing or separate windows may need a different position or a compatibility fix. |
 
-For diagnostics, open the mod's **Details** page in Windhawk and inspect its
-log. Temperature-provider changes, adapter selection, counter recovery and
-sensor-name mismatches are logged without printing every one-second sample.
+The Windhawk log records provider changes, adapter selection, counter recovery,
+placement errors and sensor mismatches. It does not print every sample.
 
-## Compatibility and placement
+## Compatibility
 
-- Windows 11 64-bit. The widget can be placed on the primary or a secondary
-  taskbar. x64 is hardware-tested; ARM64 is compilation-tested.
-- Monitor 1 is always the primary display. Other monitors are ordered by their
-  position in the virtual desktop and can differ from the numbers in Windows
-  Display Settings. An unavailable or disconnected selection falls back to the
-  primary taskbar automatically and moves back when the selected display returns.
-- Display-change notifications re-evaluate monitor ordering even when the number
-  of displays and their taskbar windows stay unchanged.
-- On a taskbar shorter than the normal 38-DIP widget, the whole block scales down
-  uniformly to fit. Normal-height taskbars keep the configured size. Very wide
-  fonts can still require a wider widget; text is trimmed instead of overlapping.
-- Centered taskbar icons are recommended.
-- Windows Widgets/weather or another left-side taskbar extension can occupy the
-  same far-left area. Adjust the offset or disable the conflicting element if
-  they overlap.
-- Enable **Reserve space before the Start button** if the widget overlaps
-  left-aligned taskbar buttons.
-- The widget is native XAML inside the taskbar, not a topmost overlay or XAML
-  Diagnostics consumer.
-- It can coexist with Taskbar Styler.
+The current source is **1.6.0**, built with Windhawk **1.7.3** for Windows 11.
+The widget targets horizontal primary and secondary taskbars. x64 and ARM64
+builds pass; ARM64 hardware has not been checked.
 
-Secondary-taskbar discovery is adapted from
-[Taskbar Fluent Media Player](https://github.com/Salyts/Taskbar-Fluent-Media-Player)
-by Salyts.
+Placement and editing pass isolated XAML/Win32 tests. Live Explorer checks for
+this version are still pending, including top/bottom taskbars, physical moves
+between monitors with different DPI, unplug/reconnect, restart persistence and
+Taskbar Styler presets. Test renders do not prove those configurations.
+
+The normal widget uses native taskbar XAML. Move mode uses a temporary Win32
+window. It does not use XAML Diagnostics. Display changes recheck the target even
+when the number of monitors stays the same. Very wide fonts can still be trimmed;
+increase the widget width if needed.
 
 ## Install
 
-### From the official Windhawk catalog
-
 Search for **Taskbar System Info** in Windhawk and select **Install**.
-
-### Manual installation
+To use this repository's source directly:
 
 1. Open Windhawk and select **Create a new mod**.
-2. Replace the generated source with `taskbar-system-info.wh.cpp`.
+2. Replace the generated source with [taskbar-system-info.wh.cpp](taskbar-system-info.wh.cpp).
 3. Select **Compile Mod** and enable it.
 
 ## Development and verification
@@ -350,35 +336,65 @@ python .\tests\validate-source.py
 .\tests\run-ui-smoke.ps1
 ```
 
-The source validator uses only the Python standard library. The local build uses
-the compiler and architecture-specific engine library bundled with Windhawk.
-The smoke-test queries live D3DKMT, DXGI
-fallback and PDH state, reports integrated-adapter detection, verifies that the
-selected GPU LUID is present in the performance counters, checks GPU, VRAM and
-temperature ranges, and reports whether Windows exposes usable ACPI thermal
-zones.
+The source validator uses the Python standard library. Builds use the compiler
+and architecture-specific engine library bundled with Windhawk.
 
-The regression executable includes the production module directly, using the
-Windhawk editor API stubs and injected Windows provider APIs. It tests cached
-HWiNFO record reordering, sparse registry indices, locale-independent decimals,
-timestamped graph gaps, sampling deadlines, stale versus parked GPU queries,
-LUID changes, hard-error recovery, and CPU/GPU query isolation. It also exercises
-the real notification callback on a private hidden window and verifies that
-queued messages are harmless after the callback is detached.
+The regression suite includes the production module with fake provider APIs and
+Windhawk storage. Its 256 checks cover graph gaps, sampling deadlines, HWiNFO
+reordering, sparse registry entries, locale-independent numbers, GPU-query
+recovery, placement, spacing, hotkeys, saved profiles, cancellation and rollback.
+Native callbacks run on private hidden windows.
 
-The UI smoke test hosts the real widget in an isolated XAML Island and writes
-PNG renders to `build-ui-smoke`. It does not inject into Explorer, change the
-desktop theme or restart the display driver. Synthetic tests and a healthy
-live-counter smoke run do not prove physical driver-restart, monitor-unplug,
-mixed-DPI or ARM64-device behavior; those remain separate manual checks.
-See [the verification and review-resolution record](docs/review-resolution-2026-09-17.md)
-for the exact scope of this change and deliberately retained tradeoffs.
+The XAML smoke test renders the real widget into an isolated XAML Island. It
+checks transformed and hidden controls, stretched containers, shrinking and
+restoration, external margins, reservation rollback, stable layout and geometry
+cache reuse. Move checks include real alpha upload to a hidden layered window,
+live readings during dragging, glass only during an active drag, the transparent
+normal widget, the hand cursor, red invalid feedback, compact
+cells at font size 13, text alignment, opacity restoration and graphics cleanup.
+Its PNGs are written to `build-ui-smoke`; selected images are copied into `assets`.
+
+The metrics smoke test reads live Windows counters and adapter interfaces. It
+checks adapter selection, counter identity, ranges and available thermal zones.
+It does not simulate a driver replacement or a physical monitor change.
+
+Collection runs on a worker thread and the UI consumes completed snapshots. CPU
+and GPU queries are separate, so GPU recovery does not reset CPU readings.
+Graphs use timestamps; a bounded queue keeps the latest 256 samples when the UI
+is busy. Sampling uses deadlines rather than adding collection time to every
+interval. Theme, layout and display notifications update the widget; its fallback
+UI timer follows the configured sampling interval.
+
+The normal GPU adapter refresh interval is 60 seconds. A changed LUID or
+three consecutive hard counter errors can rebuild the GPU query, with a recovery
+cooldown. Missing memory readings also trigger a separate fresh-query check;
+only a working fresh reading replaces a stale query. A parked or unavailable GPU
+is not repeatedly reset. CPU and RAM stay visible while GPU counters establish
+a new baseline. Missing engine and memory readings show `--%`; a valid memory
+reading with no engine instances can show idle 0%.
+
+Native GPU-temperature errors have their own retry path. Unsupported or invalid
+temperature queries retry once per minute; other failures back off from 5 to 60
+seconds. A fresh temperature handle allows recovery even if the adapter LUID
+stays the same. A new LUID or settings reload clears the delay. HWiNFO caches
+check sensor identities; reordered readings are reselected in the same sample.
+Partial discovery retries briefly before returning to the normal 60-second
+Shared Memory or 30-second Registry scan. Invalid layouts are rejected and
+logged. Numeric parsing and displayed decimals do not depend on Explorer's locale.
+
+See [the 1.6.0 placement verification record](docs/placement-verification-2026-10-04.md)
+for the checks and remaining Explorer scenarios, and
+[the metrics review record](docs/review-resolution-2026-09-17.md) for provider
+behavior and tradeoffs. Automated checks do not replace live hardware tests.
 
 ## Credits and license
 
-Taskbar discovery and window-thread marshaling follow techniques from
+Taskbar discovery and thread dispatch follow
 [Multirow taskbar for Windows 11](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-multirow.wh.cpp)
 by Michael Maltsev (`m417z`). Native GPU temperature collection follows his
 [Taskbar Clock Customization implementation](https://github.com/m417z/my-windhawk-mods/commit/861920df6380f4c13abec5d9226362c4725e8362).
+Secondary-taskbar discovery is adapted from
+[Taskbar Fluent Media Player](https://github.com/Salyts/Taskbar-Fluent-Media-Player)
+by Salyts.
 
-Released under GPL-3.0.
+Released under [GPL-3.0](LICENSE).

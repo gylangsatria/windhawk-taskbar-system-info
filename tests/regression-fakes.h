@@ -146,6 +146,20 @@ inline LSTATUS RegistryValue(HKEY, LPCWSTR name, LPDWORD, LPDWORD type,
     *bytes = required;
     return ERROR_SUCCESS;
 }
+inline std::map<std::wstring, std::wstring> localStorage;
+inline bool localSaveFails = false;
+inline size_t GetLocalString(PCWSTR key, PWSTR buffer, size_t capacity) {
+    auto it = localStorage.find(key);
+    if (it == localStorage.end()) return 0;
+    if (capacity <= it->second.size()) return it->second.size() + 1;
+    std::copy(it->second.begin(), it->second.end(), buffer);
+    buffer[it->second.size()] = 0;
+    return it->second.size();
+}
+inline BOOL SetLocalString(PCWSTR key, PCWSTR value) {
+    if (localSaveFails) return FALSE;
+    localStorage[key] = value; return TRUE;
+}
 } // namespace fake
 
 #define PdhOpenQueryW fake::OpenQuery
@@ -167,3 +181,6 @@ inline LSTATUS RegistryValue(HKEY, LPCWSTR name, LPDWORD, LPDWORD type,
 #define RegCloseKey fake::CloseRegistry
 #define RegQueryValueExW fake::RegistryValue
 #define RegEnumValueW fake::EnumRegistry
+
+#define Wh_GetStringValue fake::GetLocalString
+#define Wh_SetStringValue fake::SetLocalString

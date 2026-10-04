@@ -88,56 +88,172 @@ void HistoryAndScheduling() {
 }
 
 void AdaptivePlacement() {
-    ModSettings settings;
-    settings.width = 410;
-    settings.leftOffset = 2000;
-    auto p = ResolveTaskbarPlacement(settings, 1920);
-    Check(Near(p.left, 1510) && Near(p.width, 410), "1080p offset must fit the whole widget");
-    p = ResolveTaskbarPlacement(settings, 2560.0 / 1.5);
-    Check(Near(p.left, 2560.0 / 1.5 - 410), "150 percent uses logical panel width");
-    settings.leftOffset = 3500;
-    p = ResolveTaskbarPlacement(settings, 5120);
-    Check(Near(p.left, 3500), "ultrawide offsets must not have an arbitrary 2000 limit");
-    p = ResolveTaskbarPlacement(settings, 300);
-    Check(Near(p.left, 0) && Near(p.width, 300), "very narrow panel must shrink the host");
-    p = ResolveTaskbarPlacement(settings, 0);
-    Check(Near(p.left, 0) && Near(p.reserved, 0), "unmeasured panel must defer a large offset");
-    p = ResolveTaskbarPlacement(settings, std::numeric_limits<double>::quiet_NaN());
-    Check(Near(p.left, 0) && std::isfinite(p.width), "invalid measurement must remain finite");
-
+    ModSettings settings; settings.width = 410;
+    TaskbarGeometry geometry{1920, 48, {{0, 300, true}, {1800, 1920, false}}, true};
+    auto p = ResolveTaskbarPlacement(settings, geometry, {2000, 0});
+    Check(Near(p.left, 1384) && Near(p.width, 410) && Near(p.reserved, 0), "prefer the far-right free slot with breathing room before tray");
     settings.reserveSpace = true;
-    settings.reserveGap = 8;
-    settings.leftOffset = 2000;
-    p = ResolveTaskbarPlacement(settings, 1700, 500, 10, 20);
-    Check(Near(p.left, 752) && Near(p.reserved, 1170),
-          "reservation must preserve buttons and external margins");
-    p = ResolveTaskbarPlacement(settings, 700, 500);
-    Check(Near(p.left, 0) && Near(p.width, 200) && Near(p.reserved, 200),
-          "buttons have priority when only part of the widget fits");
-    p = ResolveTaskbarPlacement(settings, 400, 500);
-    Check(Near(p.width, 0) && Near(p.reserved, 0), "no room must not displace taskbar buttons");
-    p = ResolveTaskbarPlacement(settings, 417, 0);
-    Check(Near(p.width, 410) && Near(p.reserved, 417), "reduce gap before shrinking widget");
-
-    for (double physicalWidth : {1280.0, 1920.0, 2560.0, 3840.0, 5120.0}) {
-        for (double scale : {1.0, 1.25, 1.5, 2.0}) {
+    p = ResolveTaskbarPlacement(settings, geometry, {0, 0});
+    Check(Near(p.left, 6) && Near(p.width, 410) && Near(p.reserved, 424), "reserve before actual buttons with an inset at the panel edge");
+    Check(PlacementFits(geometry, p), "reservation must leave the widget and shifted buttons separate");
+    p = ResolveTaskbarPlacement(settings, geometry, {2000, 0});
+    Check(Near(p.left, 1384) && Near(p.reserved, 0), "reservation need not move buttons when a nearer gap exists");
+    settings.reserveSpace = false;
+    geometry.occupied = {{0, 100}, {550, 700}, {1150, 1920}};
+    p = ResolveTaskbarPlacement(settings, geometry, {600, 0});
+    Check(Near(p.left, 706) && Near(p.width, 410), "choose nearest full-width gap between independent elements with clearance");
+    geometry = {800, 48, {{0, 100}, {472, 800}}, true};
+    p = ResolveTaskbarPlacement(settings, geometry, {200, 200});
+    Check(Near(p.left, 106) && Near(p.width, 360), "shrink only when no full size slot exists, preserving side clearance");
+    geometry.occupied[1].left = 452;
+    Check(ResolveTaskbarPlacement(settings, geometry, {0, 0}).width == 0, "hide below 85 percent scale");
+    geometry.occupied[1].left = 472; settings.fontSize = 9;
+    Check(ResolveTaskbarPlacement(settings, geometry, {0, 0}).width == 0, "nine-DIP text must not become smaller");
+    settings.fontSize = 11; geometry.height = 30;
+    Check(ResolveTaskbarPlacement(settings, geometry, {0, 0}).width == 0, "respect readability when height constrains scale");
+    geometry.height = 48; geometry.ready = false;
+    Check(ResolveTaskbarPlacement(settings, geometry, {0, 0}).width == 0, "unknown layout is not a free slot");
+    geometry = {1212, 48, {{0, 100}, {522, 690}, {1112, 1212}}, true};
+    p = ResolveTaskbarPlacement(settings, geometry, {401, 696});
+    Check(Near(p.left, 696), "equal-distance choices preserve the preceding slot");
+    Check(!PlacementFits(geometry, {100, 410, 0}) && PlacementFits(geometry, {106, 410, 0}),
+          "touching a button is invalid while a six-DIP gap is accepted");
+    Check(!PlacementFits({500, 48, {}, true}, {0, 410, 0}) &&
+          PlacementFits({500, 48, {}, true}, {6, 410, 0}),
+          "panel edges keep the same minimum clearance without any mapped controls");
+    auto free = FreeTaskbarIntervals(1000, {{100, 300}, {250, 400}, {-30, 10}, {900, 1200}});
+    Check(free.size() == 2 && Near(free[0].left, 10) && Near(free[0].right, 100) &&
+          Near(free[1].left, 400) && Near(free[1].right, 900), "merge overlaps and clip to the panel");
+    for (double physical : {1280., 1920., 2560., 3840., 5120.}) {
+        for (double scale : {1., 1.25, 1.5, 2.}) {
             for (bool reserve : {false, true}) {
                 settings.reserveSpace = reserve;
-                double available = physicalWidth / scale - 180;
-                p = ResolveTaskbarPlacement(settings, available, 480, 10, 8);
-                Check(p.left >= 0 && p.width >= 0 &&
-                          p.left + p.width <= available + 0.001 &&
-                          (!reserve || p.reserved <= std::max(0.0, available - 480 - 18) + 0.001),
-                      "placement matrix must stay inside panel and preserve buttons");
+                double width = physical / scale;
+                geometry = {width, 48, {{20, 300, true}, {width - 180, width}}, true};
+                p = ResolveTaskbarPlacement(settings, geometry, {2000, 0});
+                Check(p.width == 0 || (PlacementFits(geometry, p) && p.width >= 348.5),
+                      "DPI matrix must preserve mapped elements and readability");
             }
         }
     }
-    Check(settings.leftOffset == 2000, "clamping must not rewrite user settings");
-    settings.reserveSpace = false;
-    auto small = ResolveTaskbarPlacement(settings, 960);
-    auto large = ResolveTaskbarPlacement(settings, 3840);
-    Check(small.left < large.left && Near(large.left, 2000),
-          "requested offset must return after moving to a wider panel");
+    geometry = {1920, 48, {{0, 300, true}, {1800, 1920}}, true};
+    settings.reserveSpace = true;
+    p = ResolveTaskbarPlacement(settings, geometry, {0, 0}, false);
+    Check(p.reserved == 0 && Near(p.left, 306), "rejected reservation falls back to an existing gap");
+    Check(!PlacementFits(geometry, {0, 410, 0}), "independent intersection check detects a button overlap");
+    TaskbarGeometry arranged{1920, 48, {{1450, 1850, true}, {1800, 1920}}, true};
+    Check(PlacementFits(arranged, {6, 410, 0}) && !ReservedControlsFit(arranged),
+          "arranged buttons touching the tray reject reservation even when the widget itself is clear");
+    arranged.occupied[0] = {1418, 1718, true};
+    Check(ReservedControlsFit(arranged), "actual reservation keeps all moved buttons within their own gap");
+    arranged.occupied[0] = {1900, 2100, true};
+    Check(PlacementFits(arranged, {6, 410, 0}) && !ReservedControlsFit(arranged),
+          "unreserved clipped buttons do not hide a free widget but cannot be reserved beyond the panel");
+    settings.reserveGap = 0;
+    p = ResolveTaskbarPlacement(settings, geometry, {0, 0});
+    Check(Near(p.left, 6) && Near(p.reserved, 422),
+          "a zero configured reservation gap still retains six DIP visual clearance");
+}
+
+void MovePreferences() {
+    TaskbarProjection projection;
+    projection.origin = {-1920, -900}; projection.scale = 1.5;
+    Check(Near(ScreenPointToPreferredLeft(projection, {-1125, -850}, .25, 410), 427.5),
+          "negative display origins and 150 percent DPI convert physical cursor coordinates");
+    projection.origin = {2560, 0}; projection.scale = 2;
+    Check(Near(ScreenPointToPreferredLeft(projection, {3560, 20}, .5, 410), 295),
+          "200 percent destination uses its own logical coordinate scale");
+    MoveEditorState editor;
+    editor.visual.ready = true; editor.visual.width = 410;
+    editor.target.origin = {-1920, -1080}; editor.target.scale = 1.5;
+    editor.target.geometry = {1280, 48, {}, true}; editor.candidate = {100, 410, 0};
+    auto preview = ResolveMovePreviewLayout(editor, {-1920, -1080, 0, 0});
+    Check(preview.bounds.left + preview.content.left == -1770 && preview.content.right - preview.content.left == 615,
+          "glass padding preserves actual widget coordinates at a negative-origin 150 percent display");
+    Check(preview.bounds.top == -1078 && preview.bounds.bottom == -1011 &&
+          preview.bounds.right - preview.bounds.left == 615 && preview.body.top == 0,
+          "top taskbar preview contains only the widget with no instruction surface");
+    editor.target.origin = {0, 1032}; editor.target.scale = 1;
+    editor.target.geometry = {1920, 48, {}, true}; editor.candidate.left = 300;
+    preview = ResolveMovePreviewLayout(editor, {0, 0, 1920, 1080});
+    Check(preview.bounds.top == 1034 && preview.bounds.bottom == 1078 &&
+          preview.bounds.top + preview.content.top == 1037,
+          "bottom taskbar preview stays within the panel without moving the proposed widget");
+    editor.candidate.width = 348.5;
+    preview = ResolveMovePreviewLayout(editor, {0, 0, 1920, 1080});
+    Check(Near(preview.contentScale, .85) && preview.content.bottom - preview.content.top == 32,
+          "live preview follows the accepted readable widget scale");
+    auto hotkey = ParseMoveHotkey(L"Ctrl+Alt+M");
+    Check(hotkey && hotkey->key == 'M' && hotkey->modifiers == (MOD_CONTROL | MOD_ALT), "default move combination");
+    Check(ParseMoveHotkey(L" shift + WIN + f24 ")->key == VK_F24, "case and whitespace in hotkeys");
+    Check(ParseMoveHotkey(L"")->key == 0, "empty disables the shortcut");
+    for (auto invalid : {L"Ctrl+Ctrl+M", L"Ctrl+", L"A+B", L"F25", L"Ctrl+Mouse1", L"Ctrl", L"+M", L"F01", L"F 2", L"F-2"}) {
+        std::wstring reason;
+        Check(!ParseMoveHotkey(invalid, &reason) && !reason.empty(), "malformed hotkeys have a specific rejection reason");
+    }
+    PlacementProfiles profiles{2, 2000, L"display-b", {{L"display-a", .25}, {L"display-b", .75}}};
+    auto saved = SerializeProfiles(profiles); auto parsed = ParseProfiles(saved);
+    Check(parsed && parsed->target == L"display-b" && parsed->monitor == 2 && parsed->offset == 2000 &&
+          Near(parsed->positions.at(L"display-a"), .25), "per-display positions survive serialization");
+    Check(SerializeProfiles(*parsed) == saved, "profile serialization is deterministic");
+    for (auto invalid : {L"", L"2\n1 10\n\n", L"1\n33 10\n\n", L"1\n1 -10\n\n", L"1\n1 10\nx\n",
+                         L"1\n1 10\n\nx\tNaN\n", L"1\n1 10\n\nx\t1.1\n", L"1\n1 10\n\nx\t.1\nx\t.2\n",
+                         L"1\n1 \n\n", L"1\n1 2147483648\n\n", L"1\n1  10\n\n", L"1\n1 10junk\n\n"})
+        Check(!ParseProfiles(invalid), "corrupt saved data must not become a placement");
+    ModSettings settings; settings.monitor = 2; settings.leftOffset = 2000;
+    auto reconciled = profiles;
+    settings.fontSize = 16; settings.width = 600;
+    Check(!ReconcileProfiles(reconciled, settings, L"display-b") && SerializeProfiles(reconciled) == saved,
+          "appearance settings preserve target and every display preference");
+    settings.monitor = 1;
+    Check(ReconcileProfiles(reconciled, settings, L"display-a") && reconciled.target.empty() && reconciled.positions.size() == 2,
+          "manual monitor change releases dragged target and retains per-display positions");
+    settings.leftOffset = 20;
+    Check(ReconcileProfiles(reconciled, settings, L"display-a") && !reconciled.positions.contains(L"display-a") &&
+          Near(reconciled.positions.at(L"display-b"), .75), "manual offset change clears only the current display position");
+    auto confirmed = ConfirmPlacementPreference(profiles, settings, L"display-c", 700, 2000, false);
+    Check(confirmed && confirmed->target == L"display-c" && Near(confirmed->positions.at(L"display-c"), .5) &&
+          confirmed->positions.size() == 3, "confirmed move saves a fraction of full-width logical travel");
+    auto reset = ConfirmPlacementPreference(profiles, settings, L"", 0, 2000, true);
+    Check(reset && reset->target.empty() && reset->positions.empty() && reset->monitor == 1 && reset->offset == 20,
+          "confirmed Home clears all drag preferences and uses current manual settings");
+    Check(profiles.target == L"display-b" && profiles.positions.size() == 2,
+          "drafting a move or reset leaves the preceding saved preference intact");
+    Check(!ConfirmPlacementPreference(profiles, settings, L"", 0, 2000, false), "display without stable identity cannot be saved");
+    auto limited = profiles;
+    for (int i = 0; limited.positions.size() < 32; ++i) limited.positions[L"screen-" + std::to_wstring(i)] = .5;
+    Check(!ConfirmPlacementPreference(limited, settings, L"new-screen", 0, 2000, false) &&
+          ConfirmPlacementPreference(limited, settings, L"display-b", 0, 2000, false).has_value(),
+          "profile bound rejects only new displays and still allows updating an existing one");
+    SetPlacementProfiles(profiles);
+    Check(PlacementProfilesSnapshot().target == L"display-b", "profile snapshots are copied safely");
+    for (int failure = 0; failure < 5; ++failure) {
+        fake::localSaveFails = false; SavePlacementProfiles(profiles);
+        int applied = 0, verified = 0, restored = 0;
+        auto epoch = g_moveEpoch.load();
+        fake::localSaveFails = failure == 2;
+        bool success = CompleteMoveTransaction(profiles, *confirmed, epoch, [&] {
+            ++applied;
+            if (failure == 3) CancelMoveEditor();
+            if (failure == 4) throw std::runtime_error("injected transfer exception");
+            return failure != 0;
+        }, [&] { ++verified; return failure != 1; }, [&] { ++restored; return true; });
+        Check(!success && applied == 1 && restored == 1 && !g_moveCommitting &&
+              PlacementProfilesSnapshot().target == profiles.target &&
+              ParseProfiles(fake::localStorage[L"placement.v1"])->target == profiles.target,
+              "failed transfer, layout, storage, cancellation or exception restores preference and releases commit state");
+        Check(verified == (failure == 0 || failure == 4 ? 0 : 1), "unapplied or throwing transfers are never verified or saved");
+    }
+    fake::localSaveFails = false; int restored = 0;
+    Check(CompleteMoveTransaction(profiles, *confirmed, g_moveEpoch.load(), [] { return true; },
+          [] { return true; }, [&] { ++restored; return true; }) && !restored && !g_moveCommitting &&
+          ParseProfiles(fake::localStorage[L"placement.v1"])->target == L"display-c",
+          "successful transfer and verification persist the confirmed target without rollback");
+    Check(CompleteMoveTransaction(*confirmed, *reset, g_moveEpoch.load(), [] { return true; },
+          [] { return true; }, [] { return true; }) && PlacementProfilesSnapshot().positions.empty() &&
+          ParseProfiles(fake::localStorage[L"placement.v1"])->target.empty(), "confirmed Home reset is persisted only after successful placement");
+    fake::localStorage.clear();
+    SetPlacementProfiles({});
 }
 
 void SetMapping(std::vector<HwInfoSensorPrefix> sensors,
@@ -554,6 +670,85 @@ void NativeTemperatureRecovery() {
     g_d3dkmtQueryAdapterInfo = nullptr;
 }
 
+void MoveWindowLifecycle() {
+    auto settings = std::make_shared<ModSettings>();
+    settings->moveHotkey = L"Ctrl+Alt+Shift+F24";
+    { std::lock_guard lock(g_settingsMutex); g_settings = settings; }
+    g_unloading = false;
+    EnsurePlacementControl(*settings);
+    Check(g_placementControlWindow != nullptr, "create production placement control on the owning thread");
+    Check(g_hotkeyRegistered, "register the test move combination");
+    HWND control = g_placementControlWindow;
+    Check(!RegisterHotKey(control, 991, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_F24) &&
+          GetLastError() == ERROR_HOTKEY_ALREADY_REGISTERED, "a occupied global combination really conflicts");
+    for (int i = 0; i < 10; ++i) QueueTaskbarPlacement();
+    MSG message{}; int queued = 0;
+    while (PeekMessageW(&message, control, kGeometryMessage, kGeometryMessage, PM_REMOVE)) {
+        ++queued; DispatchMessageW(&message);
+    }
+    Check(queued == 1 && !g_geometryQueued, "layout notifications coalesce into one native message");
+    settings->moveHotkey.clear(); EnsurePlacementControl(*settings);
+    Check(!g_hotkeyRegistered && RegisterHotKey(control, 991, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_F24),
+          "disabling the shortcut releases its registration");
+    UnregisterHotKey(control, 991);
+    Check(RegisterHotKey(control, 991, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_F24), "occupy a key before mod registration");
+    settings->moveHotkey = L"Ctrl+Alt+Shift+F24"; EnsurePlacementControl(*settings);
+    Check(!g_hotkeyRegistered, "mod leaves an occupied key unregistered");
+    UnregisterHotKey(control, 991);
+    EnsurePlacementControl(*settings);
+    Check(!g_hotkeyRegistered, "layout refresh does not repeatedly register a rejected key");
+    g_hotkeyRefreshPending = true; EnsurePlacementControl(*settings);
+    Check(g_hotkeyRegistered && !g_hotkeyRefreshPending, "settings reload retries a previously occupied unchanged key once");
+    settings->moveHotkey.clear(); EnsurePlacementControl(*settings);
+    WNDCLASSW parentClass{}; parentClass.hInstance = GetModuleHandleW(nullptr);
+    parentClass.lpfnWndProc = DefWindowProcW; parentClass.lpszClassName = L"PrivateMoveTestHost";
+    Check(RegisterClassW(&parentClass) != 0, "register an isolated hidden editor host");
+    HWND parent = CreateWindowExW(0, parentClass.lpszClassName, L"", WS_OVERLAPPED,
+                                  0, 0, 500, 100, nullptr, nullptr, parentClass.hInstance, nullptr);
+    WNDCLASSW cls{}; cls.hInstance = PlacementModule(); cls.lpfnWndProc = MoveEditorProc;
+    cls.lpszClassName = kMoveWindowClass;
+    Check(RegisterClassW(&cls) != 0, "register the real preview callback");
+    g_moveEditor = std::make_shared<MoveEditorState>();
+    HWND preview = CreateWindowExW(0, cls.lpszClassName, L"", WS_CHILD,
+                                   0, 0, 410, 38, parent, nullptr, cls.hInstance, nullptr);
+    Check(preview != nullptr, "create preview under a hidden parent without desktop interaction");
+    g_moveEditor->window = preview; g_moveEditorWindow = preview;
+    PlacementProfiles profiles{1, 10, L"test-display", {{L"test-display", .5}}};
+    SetPlacementProfiles(profiles);
+    SendMessageW(preview, WM_KEYDOWN, VK_RETURN, 0);
+    Check(IsWindow(preview) && PlacementProfilesSnapshot().target == L"test-display",
+          "Enter on an invalid candidate leaves saved state and editor intact");
+    g_moveEditor->candidate = {0, 410, 0}; g_moveEditor->target.window = parent;
+    SendMessageW(preview, WM_KEYDOWN, VK_RETURN, 0);
+    Check(IsWindow(preview) && !g_moveEditor->candidate.width && PlacementProfilesSnapshot().target == L"test-display",
+          "Enter revalidates a stale candidate and rejects a target without a taskbar root");
+    SendMessageW(preview, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(80, 10));
+    Check(GetCapture() == preview && g_moveEditor->dragging, "drag captures the pointer in the real callback");
+    Check(g_previewGraphicsToken != 0 && g_moveEditor->surface && g_moveEditor->surface->bitmap,
+          "drag uses the real premultiplied-alpha preview renderer");
+    SendMessageW(preview, WM_LBUTTONUP, 0, 0);
+    Check(GetCapture() != preview && !g_moveEditor->dragging, "mouse release retains preview and releases capture");
+    SendMessageW(preview, WM_KEYDOWN, VK_HOME, 0);
+    Check(g_moveEditor && g_moveEditor->reset && PlacementProfilesSnapshot().target == L"test-display",
+          "Home stages a reset without clearing persistence");
+    SendMessageW(preview, WM_KEYDOWN, VK_ESCAPE, 0);
+    Check(!IsWindow(preview) && !g_moveEditorWindow && !g_moveEditor &&
+          PlacementProfilesSnapshot().target == L"test-display", "Esc closes the preview and cancels Home");
+    Check(g_previewGraphicsToken == 0, "closing the preview releases its graphics runtime");
+    Check(SavePlacementProfiles(profiles), "save a confirmed profile through the local storage API");
+    SetPlacementProfiles({}); LoadPlacementProfiles();
+    Check(PlacementProfilesSnapshot().target == L"test-display", "reload persisted target after a fresh in-memory state");
+    fake::localSaveFails = true;
+    Check(!SavePlacementProfiles({}) && ParseProfiles(fake::localStorage[L"placement.v1"])->target == L"test-display",
+          "storage failure preserves the previously persisted target");
+    fake::localSaveFails = false;
+    RemovePlacementControl();
+    Check(!IsWindow(control) && !g_placementControlWindow && !g_hotkeyRegistered && !g_geometryQueued,
+          "teardown releases hidden control, registrations and queued state");
+    DestroyWindow(parent); UnregisterClassW(parentClass.lpszClassName, parentClass.hInstance);
+    SetPlacementProfiles({}); fake::localStorage.clear();
+}
+
 void WindowNotifications() {
     WNDCLASSW cls{};
     cls.lpfnWndProc = DefWindowProcW;
@@ -591,12 +786,16 @@ int main() {
         std::cout << "PASS: timestamped history, scheduling, formatting, layout bounds\n";
         AdaptivePlacement();
         std::cout << "PASS: adaptive placement, DPI matrix, reservation bounds and restoration\n";
+        MovePreferences();
+        std::cout << "PASS: move hotkeys, per-display profiles and corruption rejection\n";
         SensorIdentity();
         std::cout << "PASS: production HWiNFO mapping and registry cache reordering\n";
         PdhRecovery();
         std::cout << "PASS: production PDH stale/parked/LUID/error/priming paths\n";
         NativeTemperatureRecovery();
         std::cout << "PASS: native temperature refusal/backoff/open failure/same-LUID recovery\n";
+        MoveWindowLifecycle();
+        std::cout << "PASS: native move preview, capture, cancel/reset, hotkey conflict, persistence and teardown\n";
         WindowNotifications();
         std::cout << "PASS: native hidden-window notification and detach lifecycle\n";
         std::cout << checks << " behavioral checks passed (synthetic providers, no Explorer injection).\n";
