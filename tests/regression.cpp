@@ -111,6 +111,20 @@ void AdaptivePlacement() {
     Check(ResolveTaskbarPlacement(settings, geometry, {0, 0}).width == 0, "nine-DIP text must not become smaller");
     settings.fontSize = 11; geometry.height = 30;
     Check(ResolveTaskbarPlacement(settings, geometry, {0, 0}).width == 0, "respect readability when height constrains scale");
+    Check(Near(MinimumReadableScale(settings), 0.85), "standard taskbar keeps the 85 percent floor");
+    settings.shortTaskbar = true;
+    Check(Near(MinimumReadableScale(settings), 0.78), "small taskbar lowers the scale floor");
+    Check(ResolveTaskbarPlacement(settings, geometry, {0, 0}).width > 0,
+          "small taskbar keeps a short-height widget visible");
+    settings.fontSize = 13;
+    Check(Near(MinimumReadableScale(settings), 0.78), "small taskbar text floor stays below the scale floor");
+    settings.fontSize = 11; geometry.occupied[1].left = 420;
+    Check(ResolveTaskbarPlacement(settings, geometry, {0, 0}).width == 0,
+          "small taskbar still hides below its own scale floor");
+    settings.shortTaskbar = false;
+    Check(ResolveTaskbarPlacement(settings, geometry, {0, 0}).width == 0,
+          "disabling small taskbar support restores the standard limits");
+    geometry.occupied[1].left = 472;
     geometry.height = 48; geometry.ready = false;
     Check(ResolveTaskbarPlacement(settings, geometry, {0, 0}).width == 0, "unknown layout is not a free slot");
     geometry = {1212, 48, {{0, 100}, {522, 690}, {1112, 1212}}, true};

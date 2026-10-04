@@ -129,6 +129,7 @@ int wmain(int argc, wchar_t** argv) {
             auto settings = std::make_shared<ModSettings>(*initialSettings);
             settings->width = scenario.width;
             settings->fontSize = scenario.font;
+            settings->shortTaskbar = scenario.height <= 30;
             settings->leftOffset = 0;
             {
                 std::lock_guard lock(g_settingsMutex);
@@ -172,8 +173,8 @@ int wmain(int argc, wchar_t** argv) {
             if (g_widgetHost.Visibility() == Visibility::Visible && g_widgetHost.ActualHeight() > scenario.height + 0.1) {
                 throw std::runtime_error("Widget overflows short taskbar");
             }
-            if (scenario.height == 30 && g_widgetHost.Visibility() != Visibility::Collapsed)
-                throw std::runtime_error("Unusable text scale must hide the widget");
+            if (scenario.height == 30 && g_widgetHost.Visibility() != Visibility::Visible)
+                throw std::runtime_error("Small taskbar support must keep the widget visible");
             SaveImage(frame, argv[1], scenario.name);
             std::wcout << L"RENDERED " << scenario.name << L" host-height="
                        << g_widgetHost.ActualHeight() << L"\n";

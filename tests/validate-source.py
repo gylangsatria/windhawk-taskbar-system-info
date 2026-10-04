@@ -153,7 +153,7 @@ def main() -> int:
     assert metadata.get("description:uk-UA")
 
     settings = parse_settings(extract_block(source, "WindhawkModSettings"))
-    assert len(settings) == 29, f"Expected 29 settings, got {len(settings)}"
+    assert len(settings) == 30, f"Expected 30 settings, got {len(settings)}"
 
     setting_keys: set[str] = set()
     for index, item in enumerate(settings):
@@ -176,6 +176,13 @@ def main() -> int:
 
     adaptive_colors = next(item for item in settings if "adaptiveColors" in item)
     assert adaptive_colors["adaptiveColors"] is True
+
+    short_taskbar = next(item for item in settings if "shortTaskbar" in item)
+    assert short_taskbar["shortTaskbar"] is False
+    for localized_key in ("$name", "$name:uk-UA", "$description", "$description:uk-UA"):
+        assert isinstance(short_taskbar.get(localized_key), str), (
+            f"shortTaskbar.{localized_key} missing"
+        )
 
     gpu_memory_mode = next(item for item in settings if "gpuMemoryMode" in item)
     assert gpu_memory_mode["gpuMemoryMode"] == "auto"

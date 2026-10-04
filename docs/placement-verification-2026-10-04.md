@@ -21,7 +21,9 @@ container is available space.
 
 - A plain geometry snapshot and interval solver choose the nearest full-size
   gap before trying a smaller one. Scale remains at least 85%, with main text
-  at least 9 DIPs. An unreadable placement hides and restores automatically.
+  at least 9 DIPs. **Support the small taskbar** lowers both floors to 78% and
+  8 DIPs for a short-button taskbar. An unreadable placement hides and restores
+  automatically.
 - XAML hit areas are transformed into the panel root's coordinates. Background
   containers, the widget subtree and hidden controls do not occupy space.
   Cached element references stay on the owning UI thread. Structural changes
@@ -59,9 +61,9 @@ container is available space.
 
 | Check | Result and boundary |
 | --- | --- |
-| `python tests/validate-source.py` | Pass: metadata version 1.6.0, 29 settings and source invariants. |
-| `./tests/run-regression.ps1` | Pass: 256 behavioral checks. Pure placement, minimum side clearance, DPI arithmetic, persistence and injected transaction failures; real native hidden-window callbacks for capture, Enter revalidation, Home/Esc, hotkey conflict/retry and teardown. Provider regression checks also remain passing. |
-| `./tests/run-ui-smoke.ps1` | Pass: real isolated XAML Island, transformed/hidden controls, stretched-container regression, resize/hide/restore, tray/button changes, external margins, repeated layout, cache invalidation and history-preserving removal. Production preview paint, alpha pixels, hidden layered-window upload, live metric updates during dragging, glass only while dragging, transparent normal/idle/released/hovered states, hand cursor, red invalid surface, removal of instruction space, compact cells at font size 13, alignment with actual XAML layout slots, side padding and source opacity restoration. |
+| `python tests/validate-source.py` | Pass: metadata version 1.6.0, 30 settings and source invariants. |
+| `./tests/run-regression.ps1` | Pass: 262 behavioral checks. Pure placement, minimum side clearance, small-taskbar readability limits, DPI arithmetic, persistence and injected transaction failures; real native hidden-window callbacks for capture, Enter revalidation, Home/Esc, hotkey conflict/retry and teardown. Provider regression checks also remain passing. |
+| `./tests/run-ui-smoke.ps1` | Pass: real isolated XAML Island, transformed/hidden controls, stretched-container regression, resize/hide/restore, tray/button changes, external margins, repeated layout, cache invalidation and history-preserving removal. Production preview paint, alpha pixels, hidden layered-window upload, live metric updates during dragging, glass only while dragging, transparent normal/idle/released/hovered states, hand cursor, red invalid surface, removal of instruction space, compact cells at font size 13, alignment with actual XAML layout slots, side padding and source opacity restoration. The 30-DIP render uses **Support the small taskbar** and stays visible. |
 | `./tests/run-metrics-smoke.ps1` | Pass: live Windows counter and adapter reads on this workstation. AMD Radeon RX 7900 XTX was selected; GPU usage, VRAM and native GPU temperature were available. The fresh memory query worked after one collection. Windows thermal zones were unavailable. This does not test Explorer placement or physical display changes. |
 | `./build.ps1 -Architecture x86_64` | Pass with the Windhawk 1.7.3 x64 engine library and `-Wall -Wextra`. |
 | `./build.ps1 -Architecture aarch64` | Pass with the Windhawk 1.7.3 ARM64 engine library and `-Wall -Wextra`; cross-build only. |

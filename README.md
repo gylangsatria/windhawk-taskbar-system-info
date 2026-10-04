@@ -120,6 +120,11 @@ least 9 logical pixels. If that still cannot fit, it hides. When space returns,
 it restores the preferred position and full width. Automatic movement or shrinking
 does not overwrite the position you chose.
 
+Enable **Support the small taskbar** when the taskbar uses small buttons. It
+lowers those limits to 78% scale and 8 logical pixels of main text, so the widget
+stays visible on a short taskbar instead of hiding. On a standard taskbar the
+lower limits change nothing, because the 85% floor is still reached first.
+
 **Reserve space before the Start button** adds a placement option before the
 Start/app group. Existing margins are kept. If the arranged buttons would
 collide with another mapped element, the reservation is undone and the mod uses
@@ -242,6 +247,7 @@ distinctive part of its HWiNFO name. Otherwise, leave the filters empty.
 | **Move widget hotkey** | Default: `Ctrl+Alt+M`. Empty disables it. |
 | **Reserve space before the Start button** | Allows the button group to shift when a safe reservation fits. Off by default. |
 | **Reserved space gap** | Gap after a reservation. Range: 0-100 logical pixels; default: 8; effective minimum: 6. |
+| **Support the small taskbar** | Off by default. Enable it when the taskbar uses small buttons so the widget stays visible instead of hiding. |
 | **Update interval** | Collection interval, 1-10 seconds; default: 1. |
 | **Graph history** | CPU/GPU history, 15-180 seconds; default: 60. |
 
@@ -289,7 +295,7 @@ threshold is kept above its warning threshold. Alerts only change the display.
 | GPU or VRAM stays at `--` after a driver update | Allow up to one minute for adapter refresh or a fresh-counter probe, plus a few samples to establish a baseline. Check the Windhawk log; reload the mod if Windows still supplies no valid readings. |
 | Integrated-GPU memory looks too large | Automatic shows the Windows shared-memory limit. Select Dedicated VRAM only if you want the reserved carve-out. |
 | An old 512 MB discrete card is shown as shared | Set GPU memory type to Dedicated VRAM. Automatic detection can mistake an old low-memory card for an integrated GPU. |
-| The widget is hidden | The available gap must fit the readability limits and side clearance. Check width, font and the Windhawk log. Try another position or Reserve space. |
+| The widget is hidden | The available gap must fit the readability limits and side clearance. Check width, font and the Windhawk log. Try another position or Reserve space. On a taskbar with small buttons, enable **Support the small taskbar**. |
 | The widget is on the wrong display | Check Taskbar monitor or drag it to the required taskbar. Home, then Enter, clears positions saved by dragging. |
 | The hotkey does nothing | Check Move widget hotkey and the log. Choose another combination if it is invalid or already registered. |
 | The move frame turns red | The target has no ready taskbar or no readable space. Move to a usable area before pressing Enter. |
@@ -340,7 +346,7 @@ The source validator uses the Python standard library. Builds use the compiler
 and architecture-specific engine library bundled with Windhawk.
 
 The regression suite includes the production module with fake provider APIs and
-Windhawk storage. Its 256 checks cover graph gaps, sampling deadlines, HWiNFO
+Windhawk storage. Its 262 checks cover graph gaps, sampling deadlines, HWiNFO
 reordering, sparse registry entries, locale-independent numbers, GPU-query
 recovery, placement, spacing, hotkeys, saved profiles, cancellation and rollback.
 Native callbacks run on private hidden windows.
